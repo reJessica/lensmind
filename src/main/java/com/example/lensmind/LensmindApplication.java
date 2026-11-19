@@ -8,6 +8,8 @@ public class LensmindApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(LensmindApplication.class, args);
+		System.out.println("Lensmind Application is running");
+		System.out.println("please visit http://localhost:8080");
 	}
 
 }

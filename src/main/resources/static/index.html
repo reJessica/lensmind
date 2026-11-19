@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#253b33">
+  <title>灵眸 LensMind · 摄影工作台</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/css/style.css">
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="灵眸首页"><img src="/assets/logo.svg" alt=""><span>灵眸<small>LensMind</small></span></a>
+    <div class="workspace-label">创作空间 <span>V0.2</span></div>
+    <nav aria-label="工作台导航">
+      <a class="nav-item active" href="#studio"><span>◉</span> 摄影工作台</a>
+      <a class="nav-item" href="#gallery"><span>▧</span> 本次拍摄 <span class="nav-count" id="photo-count">0</span></a>
+      <button class="nav-item" id="help-button"><span>ⓘ</span> 使用说明</button>
+    </nav>
+    <div class="sidebar-note"><span class="small-label">MAKE ROOM FOR EXPRESSION</span><p>把构图交给灵眸，<br>把镜头留给自己。</p><div class="line-art">◎</div></div>
+    <div class="device-card"><span class="status-dot amber"></span><div>SO-101 机械臂<small>模拟接口 · 待接入硬件</small></div></div>
+    <div class="sidebar-footer">多模态智能摄影系统 <span>↗</span></div>
+  </aside>
+
+  <div class="app-shell">
+    <header class="topbar"><div class="breadcrumb">创作空间 <span>/</span> <b>摄影工作台</b></div><div class="topbar-actions"><span class="mode-badge">DEMO · 演示模式</span><button id="stop-button" class="stop-button">■ 停止 <kbd>Esc</kbd></button></div></header>
+    <main id="studio">
+      <section class="page-heading"><div><div class="eyebrow">YOUR PERSONAL PHOTO STUDIO</div><h1>好构图，从这一刻开始<span>。</span></h1><p>用一句话，找到属于你的镜头。</p></div><div class="session-label"><span class="status-dot" id="service-dot"></span><span id="service-status">正在连接服务</span></div></section>
+
+      <div class="studio-grid">
+        <section class="preview-panel panel" aria-label="实时取景">
+          <div class="panel-title"><h2><span class="status-dot"></span> 实时取景</h2><div class="preview-tools"><label><input type="checkbox" id="grid-toggle" checked> 九宫格</label><label><input type="checkbox" id="frame-toggle" checked> 裁剪框</label></div></div>
+          <div class="viewfinder" id="viewfinder">
+            <canvas id="preview" width="1200" height="800" aria-label="模拟场景取景画布"></canvas>
+            <video id="camera-video" playsinline muted hidden></video>
+            <div class="preview-top"><span id="source-label">◉ 模拟场景 · 非实时摄像头</span><span>未镜像</span></div>
+            <div class="thirds-grid" id="thirds-grid" aria-hidden="true"></div>
+            <div class="crop-frame" id="live-crop" aria-label="拖动调整数字裁剪位置"><span>数字裁剪</span><i></i><i></i><i></i><i></i></div>
+            <div class="countdown-overlay" id="countdown-overlay" hidden></div>
+            <div class="preview-bottom"><span id="preview-state">等待拍摄</span><span id="resolution">1200 × 800</span></div>
+          </div>
+          <div class="preview-caption"><span>✧ <span id="guide-text">试试说：“帮我拍一张居中的半身照”</span></span><button id="guide-done" class="text-button" hidden>已完成，继续 →</button></div>
+          <div class="voice-bar"><button class="mic-button" id="mic-button" title="开始语音识别" aria-label="开始语音识别">♩</button><form id="command-form"><label class="sr-only" for="command-input">语音指令或文字指令</label><input id="command-input" autocomplete="off" maxlength="120" placeholder="输入指令，或点击左侧开始说话…"><button type="submit" class="send-button" aria-label="发送指令">↑</button></form></div>
+          <div class="command-examples"><span>试一试</span><button data-command="居中半身照">居中半身照</button><button data-command="放大一点">放大一点</button><button data-command="给我动作建议">动作建议</button></div>
+        </section>
+
+        <aside class="settings-panel panel" aria-label="拍摄设置">
+          <div class="panel-title"><h2>拍摄设置</h2><span class="small-label">SETTINGS</span></div>
+          <div class="settings-content">
+            <section class="setting-group"><div class="setting-title"><h3>构图方式</h3><span>数字裁剪演示</span></div><div class="segmented" id="composition-options"><button data-composition="center" class="selected" aria-pressed="true">居中</button><button data-composition="left" aria-pressed="false">左三分</button><button data-composition="right" aria-pressed="false">右三分</button></div><div class="segmented compact" id="framing-options"><button data-framing="half" class="selected" aria-pressed="true">半身</button><button data-framing="full" aria-pressed="false">全身</button></div></section>
+            <section class="setting-group"><div class="setting-title"><h3>画幅比例</h3><span>拖动画框调整位置</span></div><div class="ratio-options" id="ratio-options"><button data-ratio="original">原比例</button><button data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4" class="selected">3:4</button><button data-ratio="16:9">16:9</button><button data-ratio="9:16">9:16</button></div><label class="range-label" for="zoom">数字放大 <output id="zoom-value">1.15×</output></label><input id="zoom" type="range" min="1" max="2.5" value="1.15" step="0.05"></section>
+            <section class="setting-group"><div class="setting-title"><h3>机位微调</h3><span class="mock-tag">模拟</span></div><div class="movement-layout"><div class="direction-pad"><button data-direction="UP" aria-label="相机向上">↑</button><button data-direction="LEFT" aria-label="相机向左">←</button><button id="home-button" aria-label="回初始位" title="回初始位">⌂</button><button data-direction="RIGHT" aria-label="相机向右">→</button><button data-direction="DOWN" aria-label="相机向下">↓</button></div><div class="movement-note"><b>小步调整，更从容</b><p>方向按预览画面左右。<br>真实设备尚未连接。</p><span id="position-label">X 0 · Y 0</span></div></div></section>
+            <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
+            <button id="capture-button" class="capture-button"><span>◉</span> 拍一张照片 <small>开始创作</small></button>
+            <button id="camera-button" class="camera-button">＋ 使用电脑摄像头</button>
+            <p class="subtle-note">演示版：人物检测与自动站稳判断待接入。</p>
+          </div>
+        </aside>
+      </div>
+
+      <section class="gallery-section" id="gallery"><div class="section-heading"><div><h2>本次拍摄 <span id="gallery-count">00</span></h2><p>每一个值得留下的瞬间。</p></div><span class="subtle-note">照片仅保存在当前页面，请及时下载</span></div><div id="gallery-empty" class="gallery-empty"><span>▧</span><div><b>你的第一张作品，即将诞生</b><p>按下拍摄，原片与裁剪成片会出现在这里。</p></div></div><div id="photo-list" class="photo-list"></div></section>
+
+      <section class="activity-panel panel"><div><h2>交互记录</h2><span>指令与执行结果</span></div><ol id="activity-log" aria-live="polite"></ol></section>
+      <footer class="main-footer"><span>LensMind 灵眸</span><span>看见你，也看见更好的构图。</span><span>V0.2 · PROTOTYPE</span></footer>
+    </main>
+  </div>
+
+  <dialog id="photo-dialog" class="photo-dialog"><div class="dialog-header"><div><h2 id="photo-title">照片预览</h2><p id="photo-subtitle">原片始终保留，裁剪不会改变原片。</p></div><button data-stop class="stop-button">■ 停止</button><button id="close-photo" class="icon-button" aria-label="关闭照片预览">×</button></div><div class="editor-stage" id="editor-stage"><canvas id="editor-canvas"></canvas><div id="editor-crop" class="crop-frame" aria-label="拖动照片裁剪框"><span>拖动调整</span><i></i><i></i><i></i><i></i></div></div><div class="editor-controls"><label>比例 <select id="editor-ratio"><option value="original">原比例</option><option>1:1</option><option>4:3</option><option>3:4</option><option>16:9</option><option>9:16</option></select></label><label>放大 <input id="editor-zoom" type="range" min="1" max="2.5" step="0.05"></label><button id="undo-crop">撤销裁剪</button><button id="save-crop" class="primary-button">保存裁剪</button></div><div class="dialog-actions"><button id="download-original">↓ 下载原片</button><button id="download-crop" class="primary-button">↓ 下载成片</button><button id="retake">重新拍摄</button></div></dialog>
+  <dialog id="help-dialog" class="help-dialog"><div class="dialog-header"><h2>欢迎使用灵眸</h2><button data-stop class="stop-button">■ 停止</button><button id="close-help" class="icon-button" aria-label="关闭使用说明">×</button></div><p>这是团队协作的初始框架。默认使用本地插画作为取景场景，所有机位操作都是模拟，不会控制真实机械臂。</p><ol><li>选择构图和比例，拖动裁剪框调整保留范围。</li><li>输入“拍照”或按拍摄按钮，等待倒计时。</li><li>点击照片编辑裁剪，分别下载原片和成片。</li><li>按 Esc 或“停止”取消当前操作；回初始位后恢复。</li></ol><p>语音识别取决于浏览器支持与麦克风权限，可能使用浏览器提供方的在线服务；文字输入始终可用。电脑摄像头仅在你点击并授权后开启，真实摄像头模式尚无人物识别或自动稳定检测。</p><p>“放大一点”只做数字裁剪。“相机靠近一点”等三维移动需要未来的硬件规划接口。人物指导为预设文案，点击完成后才会继续。</p></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

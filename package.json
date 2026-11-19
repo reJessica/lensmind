@@ -1,0 +1,9 @@
+{
+  "name": "lensmind-frontend-checks",
+  "private": true,
+  "type": "module",
+  "description": "Optional frontend tests only; Spring Boot serves the application without Node.js.",
+  "scripts": {
+    "test": "node --test tests/frontend.test.mjs"
+  }
+}

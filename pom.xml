@@ -12,7 +12,7 @@
 	<artifactId>lensmind</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>lensmind</name>
-	<description/>
+	<description>灵眸 LensMind — 多模态交互智能摄影系统</description>
 	<url/>
 	<licenses>
 		<license/>
@@ -32,7 +32,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
-			<artifactId>spring-boot-starter</artifactId>
+			<artifactId>spring-boot-starter-webmvc</artifactId>
 		</dependency>
 
 		<dependency>

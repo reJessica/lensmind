@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local files / secrets ###
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+photos/
+node_modules/
