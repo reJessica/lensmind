@@ -13,8 +13,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {"lensmind.ai.mode=MOCK", "lensmind.device.backend=mock"})
 class LensmindApplicationTests {
 
     @LocalServerPort
@@ -34,4 +36,15 @@ class LensmindApplicationTests {
         }
     }
 
+    @Test
+    void aiAndSimulationApisStartTogetherInMockMode() throws Exception {
+        var client = HttpClient.newHttpClient();
+        var json = JsonMapper.builder().build();
+        for (String path : List.of("/api/ai/status", "/api/device/status")) {
+            var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).build();
+            var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode(), path);
+            assertEquals("MOCK", json.readTree(response.body()).path("mode").asString(), path);
+        }
+    }
 }

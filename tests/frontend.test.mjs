@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseCommand } from '../src/main/resources/static/js/commands.js';
 import { cropRect } from '../src/main/resources/static/js/crop.js';
+import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 
 test('放大、构图和机位意图保持区分', () => {
   assert.equal(parseCommand('放大一点').type, 'ZOOM');
@@ -49,4 +50,15 @@ test('所有可选比例与放大级别始终在原片边界内', () => {
       }
     }
   }
+});
+
+test('录音编码为真实 PCM WAV，并拒绝超过时长的输入', async () => {
+  const wav = encodeWav(new Float32Array([0, 1, -1, 0]), 16000);
+  const view = new DataView(await wav.arrayBuffer());
+  assert.equal(wav.type, 'audio/wav');
+  assert.equal(view.byteLength, 52);
+  assert.equal(view.getUint32(24, true), 16000);
+  assert.equal(view.getInt16(46, true), 32767);
+  assert.equal(view.getInt16(48, true), -32768);
+  assert.throws(() => encodeWav(new Float32Array(16000 * 16), 16000));
 });
