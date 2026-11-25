@@ -1,5 +1,6 @@
 import { encodeWav } from './ai-client.js';
 import { FIXED_MODELS } from './model-presets.js';
+import { dispatchSpeechText } from './voice.js';
 
 async function request(path, options = {}) {
   const response = await fetch(`/api/ai/speech/${path}`, { cache: 'no-store', ...options });
@@ -152,7 +153,7 @@ export function createCloudSpeechInput({ cloud, onState, onText, onCommand }) {
         try {
           const text = await cloud.transcribe(encodeWav(resample16k(samples, resources.context.sampleRate), 16000), controller.signal);
           if (token !== generation || pending !== controller || playing || document.hidden) return;
-          onText(text); onCommand(text);
+          dispatchSpeechText(text, onText, onCommand);
         } catch (error) {
           if (token === generation && error.name !== 'AbortError') stop(error.message);
         } finally {

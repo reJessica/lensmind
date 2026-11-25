@@ -375,7 +375,20 @@ test('裁剪预览复用画布，按相同裁剪坐标绘制并保留原片', ()
 });
 import { isAiCommand } from '../src/main/resources/static/js/ai.js';
 import { liveCompositionCue } from '../src/main/resources/static/js/vision.js';
-import { createSpeechInput, createVoiceGuide } from '../src/main/resources/static/js/voice.js';
+import { createSpeechInput, createVoiceGuide, dispatchSpeechText } from '../src/main/resources/static/js/voice.js';
+
+test('浏览器与云端共享清空口令处理，清空草稿不提交模型或设备指令', () => {
+  let draft = '已有内容';
+  const commands = [];
+  const receive = text => dispatchSpeechText(text, value => { draft = value; }, value => commands.push(value));
+  for (const phrase of ['清空', '重来', '请帮我把输入框里的内容清空一下吧']) {
+    draft = '已有内容'; receive(phrase); assert.equal(draft, '');
+  }
+  assert.deepEqual(commands, []);
+  for (const phrase of ['清除头部目标', '重置相机', '不要清空', '拍照']) receive(phrase);
+  assert.deepEqual(commands, ['清除头部目标', '重置相机', '不要清空', '拍照']);
+  assert.equal(draft, '拍照');
+});
 
 test('a spoken photo request sets grid placement and framing together without firing the shutter', () => {
   const phrase = '我需要拍一张人物在右下四格的半身照';
@@ -422,6 +435,42 @@ test('hands-free input discards results from playback and starts listening again
   speech.stop();
   assert.equal(second.aborted, true);
   assert.equal(reports.at(-1).handsFree, false);
+});
+
+test('voice clear commands empty the draft and keep listening without submitting', () => {
+  let engine;
+  let draft = '';
+  const submitted = [];
+  const results = [];
+  class Recognition {
+    constructor() { engine = this; }
+    start() { this.onstart(); }
+    abort() { this.onend(); }
+  }
+  const speech = createSpeechInput({ Recognition, onState: () => {}, onText: text => { draft = text; },
+    onCommand: text => submitted.push(text) });
+  const say = (transcript, isFinal = true) => {
+    results.push(Object.assign([{ transcript }], { isFinal }));
+    engine.onresult({ resultIndex: results.length - 1, results });
+  };
+  speech.toggleHandsFree();
+  for (const phrase of ['清除', '清空。', '重来！', '重置', '请帮我把输入框里的内容清空一下吧', '重新来一次', '删掉刚才的文字']) {
+    draft = '已有内容';
+    say(phrase);
+    assert.equal(draft, '', phrase);
+  }
+  draft = '未完成的输入';
+  say('清空', false);
+  assert.equal(draft, '未完成的输入');
+  assert.deepEqual(submitted, []);
+  assert.equal(speech.handsFree, true);
+
+  for (const phrase of ['清除头部目标', '重置相机', '不要清空', '重新拍摄', '放大一点']) {
+    say(phrase);
+    assert.equal(draft, phrase);
+    assert.equal(submitted.at(-1), phrase);
+  }
+  speech.stop();
 });
 
 test('AI photography requests route separately from capture, person targets and emergency stop', () => {
