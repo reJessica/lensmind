@@ -2,7 +2,7 @@
 
 import argparse
 import base64
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -12,7 +12,8 @@ import json
 import logging
 import math
 from pathlib import Path
-from threading import Lock
+from queue import Empty, Queue
+from threading import Lock, Thread, current_thread
 from uuid import uuid4
 
 import mujoco
@@ -305,6 +306,38 @@ def make_handler(arm):
     return Handler
 
 
+def serve_simulation(renderer, port):
+    render_thread = current_thread()
+    pending = Queue()
+
+    def render(pose):
+        if current_thread() is render_thread:
+            return renderer.render(pose)
+        result = Future()
+        pending.put((pose, result))
+        return result.result()
+
+    arm = SimulatedArm(render)
+    with ThreadingHTTPServer(("127.0.0.1", port), make_handler(arm)) as server:
+        # Keep accepting status and stop requests while the main thread renders.
+        http_thread = Thread(target=server.serve_forever, name="so101-http", daemon=True)
+        http_thread.start()
+        try:
+            print(f"SO-101 MuJoCo simulation listening on http://127.0.0.1:{server.server_port}", flush=True)
+            while http_thread.is_alive():
+                try:
+                    pose, result = pending.get(timeout=0.5)
+                except Empty:
+                    continue
+                try:
+                    result.set_result(renderer.render(pose))
+                except Exception as error:
+                    result.set_exception(error)
+        finally:
+            server.shutdown()
+            http_thread.join()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scene", type=Path, required=True, help="Path to course SO101/scene.xml")
@@ -316,18 +349,14 @@ def main():
     if not args.scene.is_file():
         parser.error("--scene must point to the course scene.xml")
 
-    # Keep creation, rendering and cleanup on the same OpenGL thread.
-    with ThreadPoolExecutor(max_workers=1) as worker:
-        renderer = worker.submit(CourseRenderer, args.scene.resolve(), args.fovy).result()
-        try:
-            arm = SimulatedArm(lambda pose: worker.submit(renderer.render, pose).result())
-            with ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(arm)) as server:
-                print(f"SO-101 MuJoCo simulation listening on http://127.0.0.1:{server.server_port}", flush=True)
-                server.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            worker.submit(renderer.close).result()
+    # GLFW on macOS requires OpenGL context creation and teardown on the main thread.
+    renderer = CourseRenderer(args.scene.resolve(), args.fovy)
+    try:
+        serve_simulation(renderer, args.port)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        renderer.close()
 
 
 if __name__ == "__main__":

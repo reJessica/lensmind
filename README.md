@@ -35,12 +35,23 @@ conda activate lerobot
 python simulation/so101_server.py --scene 'E:/AI/ch6_SO101_basic/so101_lab_new/SO101/scene.xml'
 ```
 
+macOS 在图形桌面下也可启动 MuJoCo。进入仓库目录并激活课程 Python 环境，用本机的课程模型路径运行。
+
+```bash
+conda activate lerobot
+python simulation/so101_server.py --scene "/你的课程目录/SO101/scene.xml"
+```
+
+终端显示 `SO-101 MuJoCo simulation listening on http://127.0.0.1:8765` 后，保持此终端运行。可在另一个终端执行 `curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8765/status` 检查是否返回 `200`。
+
 第二个终端使用 JDK 17 或以上，启动网页服务。
 
 ```powershell
 $env:LENSMIND_DEVICE_BACKEND = 'mujoco'
 .\mvnw.cmd spring-boot:run
 ```
+
+在 macOS 的第二个终端可以运行 `LENSMIND_DEVICE_BACKEND=mujoco ./mvnw spring-boot:run`。也可以在 TRAE 的「运行和调试」中选择 **LensMind 三维仿真**，它会启动网页并连接已运行的本机 MuJoCo。
 
 打开 <http://localhost:8080>。主取景区显示腕部相机，操作区默认展开机械臂外部视角。**左转 / 右转** 每次转 1°，**前进 / 后退** 每次沿当前取景方向移动 5 mm，**上升 / 下降** 每次竖直移动 5 mm，**抬头 / 低头** 每次调整俯仰 1°。这些操作可以依次组合。页面显示转向、前后位移、相对高度和俯仰，两处画面同步更新。点「停止」锁定当前机位和帧，点「回初始位」恢复。
 
@@ -166,6 +177,7 @@ git push -u origin feat/studio-scaffold
 
 | 日期 | 更新人 | 修改范围 | 更新内容 | 验证情况 |
 | --- | --- | --- | --- | --- |
+| 2026-11-25 | Zhaiyh103（AI 辅助：Codex） | MuJoCo 跨平台启动 | 在主线程创建、使用和关闭 OpenGL 渲染器，HTTP 服务独立处理状态与停止请求。补充 macOS 启动与 8765 连通性检查。 | 3 项仿真单元测试通过；Windows 实测 HTTP 状态、俯仰、双视角更新和停止锁定。macOS 待组员验证。 |
 | 2026-11-25 | Zhaiyh103（AI 辅助：Codex） | AI 与 SO-101 仿真合并 | 合并后端 AI 与仿真接入，保留两套模式、网页缓存设置和各自的更新记录。 | 23 项 Java、5 项前端和 3 项仿真测试通过。验证同一应用的 AI 与设备接口均以 MOCK 模式响应。 |
 | 2026-11-25 | Codex（AI 辅助，成员身份待补充） | 仿真文件迁移 | 迁入 18 个本次修改或新增的源码、配置、测试和文档文件。 | 已在目标目录逐文件核对 SHA-256，并验证 3 项 Java、4 项 Node 和 3 项 Python 测试。 |
 | 2026-11-25 | Codex（AI 辅助，成员身份待补充） | 镜头俯仰仿真 | 新增独立抬头、低头按钮和俯仰读数，保留六向操作。两种视角解码完成后一起显示。 | 3 项 Java、4 项 Node、3 项 Python 测试通过。扫描 4,641 个模型机位，49 个极限组合由求解器拒绝。Edge 实测八个按钮、两路可见画面变化、镜头中心保持、停止锁定和俯仰越界拒绝。 |
