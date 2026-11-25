@@ -1,9 +1,11 @@
 const LIVE_CONFIRM_MS = 650;
 const LIVE_INTERVAL_MS = 2800;
 
-export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = () => {} }) {
-  const available = Boolean(synthesis && Utterance);
+export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = () => {}, useCloud = () => false, synthesize }) {
+  const available = () => useCloud() ? Boolean(synthesize) : Boolean(synthesis && Utterance);
   let enabled = false;
+  let rate = 1;
+  let volume = 1;
   let active = null;
   let candidate = '';
   let candidateSince = 0;
@@ -13,8 +15,12 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   function cancel() {
     candidate = '';
     if (!active) return;
+    const previous = active;
     active = null;
-    synthesis.cancel();
+    if (previous.controller) {
+      previous.controller.abort(); previous.audio?.pause();
+      if (previous.url) URL.revokeObjectURL(previous.url);
+    } else synthesis.cancel();
     onPlayback(false);
   }
 
@@ -27,9 +33,31 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   function speak(text) {
     if (!enabled || !text) return false;
     cancel();
+    if (useCloud()) {
+      const message = active = { controller: new AbortController() };
+      onPlayback(true);
+      const finish = () => {
+        if (active !== message) return false;
+        active = null;
+        if (message.url) URL.revokeObjectURL(message.url);
+        onPlayback(false); return true;
+      };
+      Promise.resolve().then(() => synthesize(text, rate, message.controller.signal)).then(blob => {
+        if (active !== message) return;
+        message.url = URL.createObjectURL(blob);
+        const audio = message.audio = new Audio(message.url);
+        audio.volume = volume;
+        audio.onended = finish;
+        audio.onerror = () => { if (finish()) onError(new Error('云端音频播放失败，请重试。')); };
+        return audio.play();
+      }).catch(error => { if (finish() && error.name !== 'AbortError') onError(error); });
+      return true;
+    }
     const message = new Utterance(text);
     active = message;
     message.lang = 'zh-CN';
+    message.rate = rate;
+    message.volume = volume;
     function finish() {
       if (active !== message) return false;
       active = null;
@@ -52,9 +80,13 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   }
 
   return {
-    available,
+    get available() { return available(); },
     get enabled() { return enabled; },
-    setEnabled(value) { enabled = available && value; reset(); },
+    setEnabled(value) { enabled = available() && value; reset(); },
+    configure(options) {
+      if (Number.isFinite(options.rate)) rate = Math.min(2, Math.max(.5, options.rate));
+      if (Number.isFinite(options.volume)) volume = Math.min(1, Math.max(0, options.volume));
+    },
     cancel,
     reset,
     speak,

@@ -78,7 +78,6 @@ function needsImage(text) {
 }
 
 export function setupAi(getScene, onAdvice) {
-  const dialog = $('ai-dialog');
   const connectionStatus = $('ai-connection-status');
   const status = $('ai-status');
   const tools = $('analysis-tools');
@@ -97,6 +96,9 @@ export function setupAi(getScene, onAdvice) {
     clearTimeout(expiryTimer);
     $('ai-disconnect').hidden = !connection;
     $('ai-model-status').textContent = connection ? `模型已连接 · ${connection.model}（${connection.host}）` : '基础模式 · 语音和文字指令可用';
+    $('settings-model-status').textContent = connection ? `${connection.model} · ${connection.host}` : '基础指令仍可使用。';
+    $('settings-connection-badge').textContent = connection ? '已连接' : '未连接';
+    $('settings-connection-badge').dataset.connected = String(Boolean(connection));
     $('assistant-privacy').hidden = !connection;
     connectionStatus.textContent = connection ? `已连接 ${connection.host}。` : '模型未连接。';
     if (connection) expiryTimer = setTimeout(() => {
@@ -109,6 +111,7 @@ export function setupAi(getScene, onAdvice) {
     changingConnection = value;
     $('ai-connect').disabled = value;
     $('ai-disconnect').disabled = value;
+    for (const id of ['llm-profile', 'ai-provider', 'ai-base-url', 'ai-model', 'ai-key', 'reset-preferences']) $(id).disabled = value;
   }
 
   function updateAnalyze() {
@@ -135,12 +138,6 @@ export function setupAi(getScene, onAdvice) {
 
   function clearKey() { $('ai-key').value = ''; }
 
-  $('ai-open').addEventListener('click', () => {
-    dialog.showModal();
-    refreshConnection();
-  });
-  $('ai-close').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', clearKey);
   $('ai-connect-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (changingConnection) return;
@@ -231,7 +228,7 @@ export function setupAi(getScene, onAdvice) {
       return;
     }
     if (!connection) {
-      status.textContent = '看图分析需要先点「模型接入」。语音和文字的基础指令仍可使用。';
+      status.textContent = '看图分析需要先到「设置」连接模型。语音和文字的基础指令仍可使用。';
       return;
     }
     const source = withImage ? getScene() : null;
@@ -281,6 +278,8 @@ export function setupAi(getScene, onAdvice) {
   refreshConnection();
   return {
     cancel,
+    clearKey,
+    refreshConnection,
     get connected() { return Boolean(connection); },
     get pending() { return Boolean(pending && !pending.localRequest); },
     invalidateScene() {

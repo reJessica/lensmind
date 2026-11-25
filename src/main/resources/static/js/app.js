@@ -5,6 +5,9 @@ import { capturePositionHint, COMPOSITION_X, composeAdvice, compositionRegions, 
 import { gridLabel } from './grid.js';
 import { isAiCommand, setupAi } from './ai.js';
 import { createSpeechInput, createVoiceGuide } from './voice.js';
+import { setupSettings } from './settings.js';
+import { setupCloudSpeech, createCloudSpeechInput, routeSpeechInput } from './cloud-speech.js';
+import { FIXED_MODELS } from './model-presets.js';
 
 const $ = id => document.getElementById(id);
 const preview = $('preview');
@@ -32,16 +35,33 @@ function cameraCropSource() {
     width: crop.width * video.videoWidth, height: crop.height * video.videoHeight };
 }
 const ai = setupAi(cameraCropSource, receiveAdvice);
-const speech = createSpeechInput({
-  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+const cloud = setupCloudSpeech();
+const speechHandlers = {
   onState: showMicrophoneStatus,
   onText: text => { $('command-input').value = text; },
   onCommand: runCommand,
+};
+const browserSpeech = createSpeechInput({
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  ...speechHandlers,
 });
+const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers });
+const speech = routeSpeechInput(browserSpeech, cloudSpeech);
 const voice = createVoiceGuide({
   synthesis: window.speechSynthesis, Utterance: window.SpeechSynthesisUtterance,
-  onError: () => setVoiceEnabled(false, '语音播报不可用，可以查看文字提示或稍后重试。'),
+  useCloud: () => $('settings-tts-model').value === FIXED_MODELS.tts,
+  synthesize: cloud.synthesize,
+  onError: error => setVoiceEnabled(false, error?.message || '语音播报不可用，可以查看文字提示或稍后重试。'),
   onPlayback: speech.playback,
+});
+const settings = setupSettings({
+  onChange: applyPreferences,
+  onPreviewVoice: () => {
+    setVoiceEnabled(true);
+    voice.speak('你好，我是灵眸。请看向镜头，放松肩膀。');
+  },
+  voiceAvailable: () => voice.available, speechAvailable: () => speech.available,
+  onSpeechChange: () => { speech.stop(); setVoiceEnabled(false); },
 });
 let toastTimer;
 let polling = false;
@@ -69,12 +89,12 @@ function notify(message, error = false) {
 
 function showPage(focus = true) {
   const requested = location.hash.slice(1);
-  const page = requested === 'studio' || requested === 'gallery' ? requested : 'home';
+  const page = ['studio', 'gallery', 'settings'].includes(requested) ? requested : 'home';
   if (page === state.page) return;
   const leavingStudio = state.page === 'studio';
+  if (state.page === 'settings') { ai.clearKey(); cloud.clearKey(); setVoiceEnabled(false); }
   state.page = page;
   if (page !== 'gallery') $('photo-dialog').close();
-  if (page !== 'studio') $('ai-dialog').close();
   if (leavingStudio) {
     cancelCapture();
     speech.stop();
@@ -88,11 +108,12 @@ function showPage(focus = true) {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  $('stop-button').hidden = $('help-stop').hidden = page !== 'studio';
+  $('stop-button').hidden = $('help-stop').hidden = page !== 'studio' && page !== 'settings';
   document.title = `${$(`${page}-title`).textContent} · 灵眸 LensMind`;
   if (page === 'gallery') {
     setText($('review-copy'), leavingStudio ? '拍摄已结束。点成片查看、调整裁剪或下载。' : '点成片可以查看大图、调整裁剪或下载。');
   }
+  if (page === 'settings') { settings.refresh(); ai.refreshConnection(); cloud.refresh(); }
   updateAvailability();
   if (focus) {
     $(`${page}-title`).focus({ preventScroll: true });
@@ -172,6 +193,7 @@ function updateDevice(device) {
 
 function updateAvailability() {
   renderStopButtons();
+  settings.updateDevice(state.device, state.online);
   const blocked = state.page !== 'studio' || !state.online || Boolean(state.stopped || state.stopPhase || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending);
   const positionHint = state.capturePending ? '' : currentPositionHint();
   document.querySelectorAll('[data-direction]').forEach(button => { button.disabled = blocked; });
@@ -989,6 +1011,17 @@ function setVoiceEnabled(enabled, message = '') {
   $('voice-status').hidden = !message;
 }
 
+function applyPreferences(preferences) {
+  $('thirds-grid').hidden = !preferences.grid;
+  $('editor-grid').hidden = !preferences.grid || $('photo-dialog').dataset.view !== 'edit';
+  $('live-crop').hidden = !preferences.frame;
+  voice.configure({ rate: preferences.voiceRate, volume: preferences.voiceVolume });
+  $('mic-button').disabled = !speech.available;
+  const enabled = speech.handsFree && preferences.voiceEnabled;
+  if (voice.enabled !== enabled) setVoiceEnabled(enabled);
+  cancelCapture();
+}
+
 function showMicrophoneStatus({ handsFree, listening, message }) {
   const mic = $('mic-button');
   const micLabel = handsFree ? '关闭语音' : '开启语音';
@@ -997,7 +1030,8 @@ function showMicrophoneStatus({ handsFree, listening, message }) {
   mic.title = micLabel;
   mic.setAttribute('aria-pressed', handsFree);
   if (!handsFree && message) setVoiceEnabled(false);
-  const status = message || (handsFree ? (listening ? '正在听，可以说「拍摄」或「停止」。' : '正在开启麦克风…') : '');
+  const provider = $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
+  const status = message || (handsFree ? (listening ? `${provider}正在听，可以说「拍摄」或「停止」。` : '正在开启麦克风…') : '');
   setText($('mic-status'), status);
   $('mic-status').hidden = !status;
 }
@@ -1013,7 +1047,7 @@ function setupVoice() {
   }
   mic.addEventListener('click', () => {
     const opening = !speech.handsFree;
-    setVoiceEnabled(opening, !voice.available ? '当前浏览器不支持语音播报，可以查看文字提示。' : '');
+    setVoiceEnabled(opening && settings.preferences.voiceEnabled, !voice.available ? '当前浏览器不支持语音播报，可以查看文字提示。' : '');
     speech.toggleHandsFree();
   });
 }
@@ -1135,12 +1169,6 @@ document.querySelectorAll('[data-person-cell]').forEach(button => button.addEven
 document.querySelectorAll('[data-ratio]').forEach(button => button.addEventListener('click', () => setRatio(button.dataset.ratio)));
 document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => move(button.dataset.direction)));
 document.querySelectorAll('[data-command]').forEach(button => button.addEventListener('click', () => { $('command-input').value = button.dataset.command; runCommand(button.dataset.command); }));
-$('grid-toggle').addEventListener('change', event => {
-  $('thirds-grid').hidden = !event.target.checked;
-  $('editor-grid').hidden = !$('grid-toggle').checked || $('photo-dialog').dataset.view !== 'edit';
-});
-$('frame-toggle').addEventListener('change', event => { $('live-crop').hidden = !event.target.checked; });
-$('delay').addEventListener('change', cancelCapture);
 $('capture-button').addEventListener('click', capture);
 $('clear-head-target').addEventListener('click', () => setSceneTarget(null));
 stopButtons.forEach(button => button.addEventListener('click', stopAll));
@@ -1165,21 +1193,22 @@ $('download-original').addEventListener('click', () => download(state.selected.o
 $('download-crop').addEventListener('click', () => download(renderCrop(state.selected.original, photoCrop()), 'crop'));
 $('retake').addEventListener('click', () => { $('photo-dialog').close(); location.hash = 'studio'; });
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || state.page !== 'studio') return;
+  if (event.key !== 'Escape' || !['studio', 'settings'].includes(state.page)) return;
   event.preventDefault();
   if (event.repeat) return;
   $('help-dialog').close();
-  $('ai-dialog').close();
   stopAll();
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
+  ai.clearKey();
+  cloud.clearKey();
   cancelCapture();
   const hadHandsFree = speech.handsFree;
   speech.stop(hadHandsFree ? '切到后台时已关闭语音。' : '');
   setVoiceEnabled(false);
 });
-window.addEventListener('pagehide', () => { speech.stop(); setVoiceEnabled(false); releaseCamera(); });
+window.addEventListener('pagehide', () => { ai.clearKey(); cloud.clearKey(); speech.stop(); setVoiceEnabled(false); releaseCamera(); });
 video.addEventListener('resize', fitCameraPreview);
 attachDrag($('live-crop'), () => state.crop, () => ({ width: preview.width, height: preview.height }), changeCrop);
 attachDrag($('editor-crop'), () => state.draft, () => ({ width: state.selected.original.width, height: state.selected.original.height }), syncEditor, rememberCrop);
@@ -1188,6 +1217,8 @@ demoImage.onerror = () => notify('模拟场景加载失败，请检查静态资�
 demoImage.src = '/assets/demo-scene.svg';
 syncCrop();
 setupVoice();
+applyPreferences(settings.preferences);
+cloud.refresh();
 window.addEventListener('hashchange', () => showPage());
 showPage(false);
 updateAvailability();

@@ -5,6 +5,72 @@ import { isSpokenShutter, parseCommand } from '../src/main/resources/static/js/c
 import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resources/static/js/crop.js';
 import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
 import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
+import { DEFAULT_PREFERENCES, normalizePreferences, readPreferences, savePreferences } from '../src/main/resources/static/js/settings.js';
+import { FIXED_MODELS, LLM_PROFILES } from '../src/main/resources/static/js/model-presets.js';
+import { createUtteranceBuffer, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
+
+test('固定模型预设和旧配置迁移保留正确服务商，不接受未知语音模型', () => {
+  assert.equal(LLM_PROFILES.recommended.model, 'qwen3.5-flash-2026-02-23');
+  assert.equal(FIXED_MODELS.asr, 'fun-asr-realtime-2026-02-28');
+  assert.equal(FIXED_MODELS.tts, 'qwen-audio-3.1-tts-flash');
+  assert.equal(FIXED_MODELS.voice, 'longanhuan_v3.1');
+  const old = normalizePreferences({ modelBaseUrl: 'https://zgc.apihy.com/v1', modelName: 'qwen3.5-27b' });
+  assert.equal(old.llmProfile, 'existing');
+  assert.equal(old.asrModel, 'browser');
+  const pinned = normalizePreferences({ asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts, apiKey: 'fake-secret' });
+  assert.equal(pinned.asrModel, FIXED_MODELS.asr);
+  assert.equal(pinned.ttsModel, FIXED_MODELS.tts);
+  assert.equal(normalizePreferences({ asrModel: 'unknown', ttsModel: 'unknown' }).asrModel, 'browser');
+  assert.equal(JSON.stringify(pinned).includes('fake-secret'), false);
+});
+
+test('云端录音先检测短句，静音和短噪声不上传，长句限制在十秒左右', () => {
+  const buffer = createUtteranceBuffer(16000);
+  const silence = new Float32Array(1600), speech = new Float32Array(1600).fill(.1);
+  for (let i = 0; i < 20; i++) assert.equal(buffer.push(silence), null);
+  for (let i = 0; i < 3; i++) assert.equal(buffer.push(speech), null);
+  for (let i = 0; i < 6; i++) assert.equal(buffer.push(silence), null);
+  const utterance = buffer.push(silence);
+  assert.ok(utterance.length >= 16000 && utterance.length <= 20000);
+  assert.equal(utterance[1600], speech[0]);
+  buffer.push(speech);
+  for (let i = 0; i < 7; i++) assert.equal(buffer.push(silence), null);
+  let long = null;
+  for (let i = 0; i < 100 && !long; i++) long = buffer.push(speech);
+  assert.ok(long.length <= 161600);
+  buffer.reset(); assert.equal(buffer.push(silence), null);
+});
+
+test('麦克风 PCM 在编码 WAV 前重采样到 16kHz', () => {
+  const output = resample16k(new Float32Array(48000).fill(.25), 48000);
+  assert.equal(output.length, 16000);
+  assert.equal(output[500], .25);
+  assert.equal(resample16k(new Float32Array(16000), 16000).length, 16000);
+  assert.throws(() => resample16k(new Float32Array(8000), 8000));
+});
+
+test('设置只持久化普通偏好，不保存密钥、会话或带凭据的地址', () => {
+  let saved;
+  const storage = { setItem(key, value) { saved = value; }, getItem() { return saved; } };
+  assert.equal(savePreferences(storage, { ...DEFAULT_PREFERENCES, grid: false, delay: '5', voiceRate: 1.2,
+    apiKey: 'fake-secret', connectionId: 'private-session', reference: 'private-image' }), true);
+  assert.deepEqual(readPreferences(storage), { ...DEFAULT_PREFERENCES, grid: false, delay: '5', voiceRate: 1.2 });
+  for (const secret of ['fake-secret', 'private-session', 'private-image']) assert.equal(saved.includes(secret), false);
+  for (const url of ['https://user:fake-secret@example.com/v1', 'https://example.com/v1?key=fake-secret', 'https://example.com/v1#fake-secret']) {
+    assert.equal(normalizePreferences({ modelBaseUrl: url }).modelBaseUrl, DEFAULT_PREFERENCES.modelBaseUrl);
+  }
+});
+
+test('损坏或不可访问的设置存储不阻止启动，参数使用有效范围', () => {
+  assert.deepEqual(readPreferences({ getItem() { return '{broken'; } }), DEFAULT_PREFERENCES);
+  assert.deepEqual(readPreferences({ getItem() { throw Error('blocked'); } }), DEFAULT_PREFERENCES);
+  assert.equal(savePreferences({ setItem() { throw Error('blocked'); } }, DEFAULT_PREFERENCES), false);
+  const value = normalizePreferences({ grid: 'false', voiceEnabled: false, delay: '99', voiceRate: 900, voiceVolume: -2,
+    modelBaseUrl: 'http://example.com/v1', modelName: '<invalid>' });
+  assert.deepEqual(value, { ...DEFAULT_PREFERENCES, voiceEnabled: false, voiceVolume: 0 });
+  assert.equal(normalizePreferences({ voiceVolume: NaN }).voiceVolume, 1);
+  assert.equal(normalizePreferences({ modelBaseUrl: 'https://api.uniapi.io/v1/' }).modelBaseUrl, 'https://api.uniapi.io/v1');
+});
 
 test('描述要拍的照片时，明确的画幅和四格区域从文字或语音转写直接设置', () => {
   const four = { type: 'POSITION_BODY', cells: [3, 4, 6, 7] };
@@ -437,6 +503,47 @@ test('voice feedback waits for a consistent cue, deduplicates it and cancels whe
   voice.setEnabled(false);
   assert.equal(messages.at(-1), 'cancel');
   assert.equal(voice.speak('不应播放'), false);
+});
+
+test('播报使用所选语速和音量，关闭后不继续说话', () => {
+  const messages = [];
+  const synthesis = { speak(message) { messages.push(message); }, cancel() {} };
+  class Utterance { constructor(text) { this.text = text; } }
+  const voice = createVoiceGuide({ synthesis, Utterance, onError: assert.fail });
+  voice.configure({ rate: 1.2, volume: .4 });
+  voice.setEnabled(true);
+  voice.speak('试听');
+  assert.equal(messages[0].rate, 1.2);
+  assert.equal(messages[0].volume, .4);
+  voice.setEnabled(false);
+  assert.equal(voice.speak('已关闭'), false);
+  assert.equal(messages.length, 1);
+});
+
+test('取消云端合成后丢弃晚到的音频，不转为浏览器播报', async () => {
+  let resolve, signal;
+  const playback = [];
+  const voice = createVoiceGuide({ synthesis: { speak: assert.fail }, Utterance: class {}, useCloud: () => true,
+    synthesize: (text, rate, inputSignal) => { signal = inputSignal; return new Promise(done => { resolve = done; }); },
+    onError: assert.fail, onPlayback: value => playback.push(value) });
+  voice.setEnabled(true);
+  voice.speak('测试');
+  await Promise.resolve();
+  voice.cancel();
+  assert.equal(signal.aborted, true);
+  resolve(new Blob(['not-played']));
+  await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual(playback, [true, false]);
+});
+
+test('云端合成失败明确报错，不伪造音频或自动切换模型', async () => {
+  const errors = [], playback = [];
+  const voice = createVoiceGuide({ useCloud: () => true, synthesize: async () => { throw Error('语音配置已过期'); },
+    onError: error => errors.push(error.message), onPlayback: value => playback.push(value) });
+  voice.setEnabled(true); voice.speak('测试');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(errors, ['语音配置已过期']);
+  assert.deepEqual(playback, [true, false]);
 });
 
 test('三维机位支持前后、上下和俯仰，混合方向指令需要先明确一步', () => {

@@ -68,7 +68,7 @@ class AiController {
     ResponseEntity<?> disconnect(HttpServletRequest request) {
         requireLocal(request);
         HttpSession session = request.getSession(false);
-        if (session != null) session.invalidate();
+        if (session != null) session.removeAttribute(SESSION_ATTRIBUTE);
         return success(describe(null));
     }
 
@@ -125,7 +125,7 @@ class AiController {
         }
     }
 
-    private void requireLocal(HttpServletRequest request) {
+    static void requireLocal(HttpServletRequest request) {
         String host = request.getServerName();
         String origin = request.getHeader("Origin");
         String fetchSite = request.getHeader("Sec-Fetch-Site");
@@ -139,7 +139,7 @@ class AiController {
         throw new AiException(403, "模型接入仅限本机打开的灵眸工作台。");
     }
 
-    private boolean sameOrigin(HttpServletRequest request, URI origin) {
+    private static boolean sameOrigin(HttpServletRequest request, URI origin) {
         int port = origin.getPort() == -1 ? ("https".equals(origin.getScheme()) ? 443 : 80) : origin.getPort();
         return request.getScheme().equals(origin.getScheme()) && request.getServerName().equals(origin.getHost())
                 && request.getServerPort() == port && origin.getRawUserInfo() == null;

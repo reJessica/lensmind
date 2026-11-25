@@ -54,9 +54,14 @@ class AiModelClient {
 
     private final ObjectMapper mapper;
     private final Set<String> allowedHosts;
+    private final LiveCallBudget budget;
 
-    AiModelClient(ObjectMapper mapper, @Value("${lensmind.ai.allowed-hosts}") String hosts) {
+    AiModelClient(ObjectMapper mapper, String hosts) { this(mapper, hosts, null); }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    AiModelClient(ObjectMapper mapper, @Value("${lensmind.ai.allowed-hosts}") String hosts, LiveCallBudget budget) {
         this.mapper = mapper;
+        this.budget = budget;
         this.allowedHosts = Arrays.stream(hosts.split(","))
                 .map(String::strip).map(host -> host.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
     }
@@ -138,9 +143,11 @@ class AiModelClient {
         if (scene != null) content.add(image(scene));
         if (reference != null) content.add(image(reference));
         Object userContent = scene == null && reference == null ? prompt : content;
-        return Map.of("model", connection.model,
+        var payload = new java.util.LinkedHashMap<String, Object>(Map.of("model", connection.model,
                 "messages", List.of(Map.of("role", "system", "content", system), Map.of("role", "user", "content", userContent)),
-                "api.openai.com".equals(connection.endpoint.getHost()) ? "max_completion_tokens" : "max_tokens", tokens);
+                "api.openai.com".equals(connection.endpoint.getHost()) ? "max_completion_tokens" : "max_tokens", tokens));
+        if ("dashscope.aliyuncs.com".equals(connection.endpoint.getHost())) payload.put("enable_thinking", false);
+        return payload;
     }
 
     private Map<String, Object> image(String jpeg) {
@@ -148,6 +155,11 @@ class AiModelClient {
     }
 
     String complete(Connection connection, String system, String prompt, String scene, String reference, int tokens) {
+        return budget == null ? send(connection, system, prompt, scene, reference, tokens)
+                : budget.call(() -> send(connection, system, prompt, scene, reference, tokens));
+    }
+
+    private String send(Connection connection, String system, String prompt, String scene, String reference, int tokens) {
         HttpsURLConnection request = null;
         try {
             request = (HttpsURLConnection) connection.endpoint.toURL().openConnection();

@@ -78,6 +78,8 @@
 
 ## 摄影模型接口
 
+网页模型入口统一为顶部「设置」（`#settings`），摄影助手内的「模型设置」链接也进入此页。沿用下述会话接口，请求字段保持兼容；默认预设为 `qwen3.5-flash-2026-02-23`，百炼调用关闭思考。API 地址、模型名称及播报/显示偏好仅在浏览器 localStorage 保存；密钥不持久化，提交、切换服务商、离开设置、切到后台时清空输入。工作台语音使用下述独立临时会话；原 `/api/ai/asr`、`/api/ai/tts` 及本机配置保持兼容。服务状态只读展示，不自动测试外部模型。
+
 这些端点只接受来自本机工作台的请求。使用 HTTPS 调用 OpenAI 兼容的 Chat Completions 接口，模型需支持文字和图片输入。默认允许的基础地址如下，模型名称以该服务商提供的视觉模型为准。
 
 | 服务商 | API 基础地址 |
@@ -98,7 +100,7 @@
 | --- | --- | --- |
 | `GET /api/ai/session` | 无 | `{ "connected": false }` 或连接状态、`id`、`model`、`host`、`expiresAt` |
 | `POST /api/ai/session` | JSON，必填 `baseUrl`、`model`、`apiKey` | 用生成的色块测试视觉接口后返回连接状态和标识，密钥不在响应中 |
-| `DELETE /api/ai/session` | 无 | `{ "connected": false }`，清除服务端会话 |
+| `DELETE /api/ai/session` | 无 | `{ "connected": false }`，只清除摄影连接，保留独立语音会话 |
 | `POST /api/ai/analyze` | JSON，必填 `connectionId`、`scene`，可选 `prompt`、`reference` | `summary`、`observations`、`targets`、`steps` |
 | `POST /api/ai/analyze`（`mode: "assistant"`） | 必填 `connectionId` 和非空 `prompt`，看图时可附 `scene` 与可选 `reference` | 同上，另可含 `settings` |
 
@@ -121,6 +123,24 @@
 `cells` 是期望区域，按画面从左上到右下逐行编号 0～8。当前观测位置用 `observations` 单独表示。返回建议用于展示和可选的浏览器朗读，不调用控制端或触发拍照。摄影助手的文字、语音和分析按钮共用一个输入。连接模型并开启摄像头后，主动发出的看图或动作建议请求使用此接口，自动构图播报仍使用本机的 `/api/vision/person`。停止、关闭相机或切换参考图时页面会丢弃待返回的建议。已发送给服务商的请求仍可能处理完成。现有本机人物检测、拍摄和设备接口保持兼容。
 
 错误返回 `{ "message": "…" }`，其中 400 表示输入无效或域名未启用，403 表示来源不符合本机要求，409 表示会话过期或连接已变更，413 表示请求过大，415 表示非 JSON 请求，502 表示服务商拒绝请求或响应无效，503 表示额度或限流，504 表示超时。错误不会把服务商原始响应透传到浏览器。
+
+## 固定模型语音会话
+
+仅供本机同源工作台使用，校验方式与摄影模型接口一致。与摄影连接独立，密钥只在后端会话内存保留 30 分钟。保存不调用供应商，响应中的 `verified:false` 不表示连接失败，而表示尚未验证云端鉴权。可用模型和操作步骤见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。
+
+| 方法与路径 | 输入 | 成功结果 |
+| --- | --- | --- |
+| `GET /api/ai/speech/session` | 无 | `{ "configured": false }` 或 `configured/id/asr/tts/voice/workspace/expiresAt/verified/notice`，不返回 Key |
+| `POST /api/ai/speech/session` | JSON：`asr`、`tts`、`workspace`、`apiKey` | 本机配置状态；两项均为 `browser` 时清除语音会话 |
+| `DELETE /api/ai/speech/session` | 无 | `{ "configured": false }`，只清除语音连接 |
+| `POST /api/ai/speech/asr` | multipart：`connectionId`、`audio` | `{ "text": "拍照", "model": "fun-asr-realtime-2026-02-28", "mode": "LIVE" }` |
+| `POST /api/ai/speech/tts` | JSON：`connectionId`、`text`、`rate` | MP3，`X-LensMind-Mode: LIVE`、`X-LensMind-Audio: speech` |
+
+`asr` 只能为 `browser` 或 `fun-asr-realtime-2026-02-28`；`tts` 只能为 `browser` 或 `qwen-audio-3.1-tts-flash`，音色固定为 `longanhuan_v3.1`。云端必须提供北京地域 Workspace ID（1～80 个字母、数字、连字符，首位字母或数字），服务端据此生成官方 WSS 地址，拒绝自定义语音 URL。同一 Workspace 下已有有效语音会话时 `apiKey` 可留空以沿用；更换 Workspace 必须重填。
+
+ASR 接收 16kHz、16bit、小端单声道 PCM WAV，0.1～15 秒，上传不超过 500KB；TTS 文本最多 160 字，`rate` 为 0.8～1.2。浏览器采集采用约 650ms 静音断句、约 10 秒长句切段，停止/切后台/离开拍摄页时丢弃晚到结果。后端使用供应商 WebSocket，当前浏览器仍按完整短句请求和播放，尚非端到端流式。已发出的请求可能继续处理和计费。
+
+会话丢失或 ID 变化返回 409，参数错误返回 400，来源不合法返回 403，无识别文字返回 422，共享尝试额度或并发超限返回 429，供应商失败返回 502，超时返回 504；不透传供应商原始报错，也不自动换模型或伪造结果。所有真实模型接口共享 `LiveCallBudget`；旧接口的 `MOCK` 不会代替工作台用户主动开启的云端会话。
 
 ## 前端模块接口
 
