@@ -31,6 +31,22 @@ class AiTests {
     }
 
     @Test
+    void defaultConfigurationAcceptsTeamProvidersWithoutAllowingSimilarDomains() throws Exception {
+        var properties = PropertiesLoaderUtils.loadAllProperties("application.properties");
+        String hosts = new MockEnvironment().resolveRequiredPlaceholders(properties.getProperty("lensmind.ai.allowed-hosts"));
+        var client = new AiModelClient(mapper, hosts);
+        for (String host : List.of("zgc.apihy.com", "api.uniapi.io")) {
+            var connection = client.connection("https://" + host + "/v1", "qwen3.5-27b", "fake-test-only");
+            assertEquals("https://" + host + "/v1/chat/completions", connection.endpoint.toString());
+            assertThrows(AiException.class, () -> client.connection("https://" + host + ".example.com/v1", "qwen3.5-27b", "fake-test-only"));
+        }
+        String overridden = new MockEnvironment().withProperty("LENSMIND_AI_ALLOWED_HOSTS", "api.openai.com")
+                .resolveRequiredPlaceholders(properties.getProperty("lensmind.ai.allowed-hosts"));
+        var restricted = new AiModelClient(mapper, overridden);
+        assertThrows(AiException.class, () -> restricted.connection("https://zgc.apihy.com/v1", "qwen3.5-27b", "fake-test-only"));
+    }
+
+    @Test
     void connectionChecksImagesAndAnalysisSendsBothInOrder() throws Exception {
         String scene = jpeg(72);
         String reference = jpeg(128);

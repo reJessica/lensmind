@@ -87,10 +87,12 @@
 | 硅基流动 | `https://api.siliconflow.cn/v1` |
 | 阿里云百炼（中国内地） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | 上海交通大学「致远一号」 | `https://models.sjtu.edu.cn/api/v1` |
+| 汇云（团队已配置） | `https://zgc.apihy.com/v1` |
+| UniAPI（团队已配置） | `https://api.uniapi.io/v1` |
 
 使用「致远一号」时，按学校指南填写支持图片输入的模型调用名 `qwen`，并在校园网或交大 VPN 下连接。[交我算 API 使用文档](https://apps.hpc.sjtu.edu.cn/posts/claw-guide-sjtu-api)
 
-本机部署者可使用 `LENSMIND_AI_ALLOWED_HOSTS` 覆盖默认列表，填写逗号分隔的可信域名。只接受精确域名，禁用上游重定向。使用 Windows 浏览器输入密钥时，通过本机工作台窗口提交。密钥仅存在本机服务的内存会话中，断开连接、服务重启或 30 分钟有效期结束后需重新填写。
+本机部署者可使用 `LENSMIND_AI_ALLOWED_HOSTS` 覆盖默认列表，填写逗号分隔的可信域名。只接受精确域名，禁用上游重定向。出现「该模型服务商未在本机启用」说明请求被本机域名名单拒绝，尚未发送给服务商；修改配置后须重启 Spring Boot。域名获准不代表模型或账户已可用，文字/视觉窗口仍需支持图片输入的 Chat Completions 模型；UniAPI 的独立 ASR/TTS 接口不由此窗口调用。使用 Windows 浏览器输入密钥时，通过本机工作台窗口提交。密钥仅存在本机服务的内存会话中，断开连接、服务重启或 30 分钟有效期结束后需重新填写。
 
 | 方法与路径 | 输入 | 成功结果 |
 | --- | --- | --- |
