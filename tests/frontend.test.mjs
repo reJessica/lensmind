@@ -358,6 +358,42 @@ test('hands-free input discards results from playback and starts listening again
   assert.equal(reports.at(-1).handsFree, false);
 });
 
+test('voice clear commands empty the draft and keep listening without submitting', () => {
+  let engine;
+  let draft = '';
+  const submitted = [];
+  const results = [];
+  class Recognition {
+    constructor() { engine = this; }
+    start() { this.onstart(); }
+    abort() { this.onend(); }
+  }
+  const speech = createSpeechInput({ Recognition, onState: () => {}, onText: text => { draft = text; },
+    onCommand: text => submitted.push(text) });
+  const say = (transcript, isFinal = true) => {
+    results.push(Object.assign([{ transcript }], { isFinal }));
+    engine.onresult({ resultIndex: results.length - 1, results });
+  };
+  speech.toggleHandsFree();
+  for (const phrase of ['清除', '清空。', '重来！', '重置', '请帮我把输入框里的内容清空一下吧', '重新来一次', '删掉刚才的文字']) {
+    draft = '已有内容';
+    say(phrase);
+    assert.equal(draft, '', phrase);
+  }
+  draft = '未完成的输入';
+  say('清空', false);
+  assert.equal(draft, '未完成的输入');
+  assert.deepEqual(submitted, []);
+  assert.equal(speech.handsFree, true);
+
+  for (const phrase of ['清除头部目标', '重置相机', '不要清空', '重新拍摄', '放大一点']) {
+    say(phrase);
+    assert.equal(draft, phrase);
+    assert.equal(submitted.at(-1), phrase);
+  }
+  speech.stop();
+});
+
 test('AI photography requests route separately from capture, person targets and emergency stop', () => {
   assert.equal(isAiCommand('让树在左上四格，人在右下四格', 'CLARIFY'), true);
   assert.equal(isAiCommand('模仿这张参考图，帮我看看姿势', 'GUIDE'), true);

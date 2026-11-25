@@ -75,6 +75,18 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
 }
 
 const LISTEN_AGAIN_MS = 350;
+const CLEAR_ACTION = '(?:清除|清空|清掉|清理|删除|删掉|重置)';
+const INPUT_TARGET = '(?:当前|这个|刚才的)?(?:输入框|文本框|框|输入|文字|文本|内容)(?:(?:里|内)(?:的)?(?:文字|文本|内容)?|的(?:文字|文本|内容))?';
+const CLEAR_INPUT = new RegExp(
+  '^(?:' + CLEAR_ACTION + '(?:一下)?(?:' + INPUT_TARGET + ')?|(?:把|将)' + INPUT_TARGET + CLEAR_ACTION + ')$',
+);
+
+function isClearInputCommand(transcript) {
+  const phrase = transcript.replace(/[\s，。！？、；：,.!?;:]/g, '')
+    .replace(/^(?:请你?|麻烦你?)?(?:帮我)?/, '')
+    .replace(/(?:一下)?[吧啊呀]?$/, '');
+  return CLEAR_INPUT.test(phrase) || /^(?:重来(?:一次|一遍)?|重新来(?:一次|一遍)?|再来(?:一次|一遍))$/.test(phrase);
+}
 
 export function createSpeechInput({ Recognition, onState, onText, onCommand }) {
   let handsFree = false;
@@ -133,6 +145,10 @@ export function createSpeechInput({ Recognition, onState, onText, onCommand }) {
         if (!result.isFinal) continue;
         lastFinal = i;
         const text = result[0].transcript.slice(0, 500);
+        if (isClearInputCommand(text)) {
+          onText('');
+          continue;
+        }
         onText(text);
         onCommand(text);
       }

@@ -997,7 +997,7 @@ function showMicrophoneStatus({ handsFree, listening, message }) {
   mic.title = micLabel;
   mic.setAttribute('aria-pressed', handsFree);
   if (!handsFree && message) setVoiceEnabled(false);
-  const status = message || (handsFree ? (listening ? '正在听，可以说「拍摄」或「停止」。' : '正在开启麦克风…') : '');
+  const status = message || (handsFree ? (listening ? '正在听，可以说「拍摄」「停止」或「清空」。' : '正在开启麦克风…') : '');
   setText($('mic-status'), status);
   $('mic-status').hidden = !status;
 }
@@ -1146,6 +1146,11 @@ $('clear-head-target').addEventListener('click', () => setSceneTarget(null));
 stopButtons.forEach(button => button.addEventListener('click', stopAll));
 $('home-button').addEventListener('click', home);
 $('camera-button').addEventListener('click', toggleCamera);
+$('command-clear').addEventListener('click', () => {
+  const input = $('command-input');
+  input.value = '';
+  input.focus();
+});
 $('command-form').addEventListener('submit', event => { event.preventDefault(); runCommand($('command-input').value); });
 $('guide-done').addEventListener('click', completeGuide);
 $('help-button').addEventListener('click', () => $('help-dialog').showModal());
