@@ -40,7 +40,13 @@ build/
 *.log
 photos/
 node_modules/
-/models/
+/models/*
+!/models/ssd_mobilenet_v1_12.onnx
+!/models/face_detection_yunet_2026may.onnx
+!/models/pose_estimation_mediapipe_2023mar.onnx
+!/models/README.md
+!/models/LICENSE-APACHE-2.0.txt
+!/models/LICENSE-YUNET.txt
 /config/ai-local.properties
 /docs/model-test-results.local.json
 /docs/model-tts-preview.local.wav
