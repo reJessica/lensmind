@@ -1,19 +1,24 @@
 import { deviceApi } from './api.js';
 import { clamp, cropRect, renderCrop, positionFrame, attachDrag } from './crop.js';
-import { parseCommand } from './commands.js';
+import { parseCommand } from './commands.js?v=so101-pitch';
 
 const $ = id => document.getElementById(id);
 const preview = $('preview');
 const ctx = preview.getContext('2d');
+const movementControls = $('movement-controls');
+const movementAnchor = movementControls.previousElementSibling;
+const armView = $('so101-view');
+const armImage = $('so101-arm-image');
 const state = {
-  device: null, online: false, stopped: false, busy: false, capturePending: false,
+  device: null, online: false, stopped: false, stopPending: false, busy: false, capturePending: false,
+  simulatedImage: null,
   epoch: 0, timer: null, stream: null, cameraPending: false, animation: null,
   composition: 'center', framing: 'half',
   crop: { ratio: '3:4', zoom: 1.15, cx: .5, cy: .48 },
   photos: [], selected: null, draft: null, undo: [],
   guide: -1, guidePending: false, recognition: null, listening: false,
 };
-const demoImage = new Image();
+let polling = false;
 let toastTimer;
 
 function log(message, error = false) {
@@ -34,14 +39,55 @@ function notify(message, error = false) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 4500);
 }
 
+function setDepthControls(enabled) {
+  const controls = [
+    [$('move-top'), enabled ? 'FORWARD' : 'UP', enabled ? '前进' : '↑', enabled ? '相机前进' : '相机向上'],
+    [$('move-left'), 'LEFT', enabled ? '左转' : '←', enabled ? '相机左转' : '相机向左'],
+    [$('move-right'), 'RIGHT', enabled ? '右转' : '→', enabled ? '相机右转' : '相机向右'],
+    [$('move-bottom'), enabled ? 'BACKWARD' : 'DOWN', enabled ? '后退' : '↓', enabled ? '相机后退' : '相机向下'],
+  ];
+  for (const [button, direction, text, label] of controls) {
+    button.dataset.direction = direction;
+    button.textContent = text;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
+  movementControls.toggleAttribute('data-depth', enabled);
+  $('camera-adjustments').hidden = !enabled;
+  $('movement-hint').textContent = enabled ? '转向和俯仰 1°，平移和升降 5 mm' : '方向按预览画面左右。';
+}
+
+function poseLabel({
+  cameraYawDegrees: yaw, cameraTravelMillimeters: distance, cameraElevationMillimeters: elevation, cameraPitchDegrees,
+}) {
+  const turn = yaw ? `${yaw > 0 ? '左转' : '右转'} ${Math.abs(yaw)}°` : '转向 0°';
+  const travel = distance ? `${distance > 0 ? '前移' : '后退'} ${Math.abs(distance)} mm` : '前后 0 mm';
+  const height = elevation ? `${elevation > 0 ? '上升' : '下降'} ${Math.abs(elevation)} mm` : '高度 0 mm';
+  const pitch = Math.round(cameraPitchDegrees);
+  const tilt = pitch ? `${pitch > 0 ? '抬头' : '低头'} ${Math.abs(pitch)}°` : '俯仰 0°';
+  return `${turn} · ${travel} · ${height} · ${tilt}`;
+}
+
 function updateDevice(device) {
   state.device = device;
   state.online = device.connected;
   // 本地停止锁存到明确回初始位，避免较早的轮询结果覆盖停止状态。
   state.stopped = state.stopped || device.state === 'STOPPED';
-  $('service-status').textContent = state.online ? (state.stopped ? '已停止 · 回初始位恢复' : '模拟控制服务已连接') : '设备已断开';
+  const so101 = device.so101;
+  const connectedLabel = so101 ? 'SO-101 三维仿真已连接' : '模拟控制服务已连接';
+  $('service-status').textContent = state.online ? (state.stopped ? '已停止 · 回初始位恢复' : connectedLabel) : '设备已断开';
   $('service-dot').classList.toggle('offline', !state.online || state.stopped);
-  $('position-label').textContent = `X ${device.x} · Y ${device.y}`;
+  const position = so101 ? poseLabel(so101) : `X ${device.x} · Y ${device.y}`;
+  if ($('position-label').textContent !== position) $('position-label').textContent = position;
+  if (so101 && armView.hidden) {
+    movementControls.parentElement.prepend(movementControls, armView);
+    setDepthControls(true);
+  } else if (!so101 && !armView.hidden) {
+    movementAnchor.after(movementControls, armView);
+    setDepthControls(false);
+  }
+  armView.hidden = !so101;
+  if (so101 && armImage.getAttribute('src') !== so101.armView) armImage.src = so101.armView;
   if (state.stopped || !state.online) {
     cancelCapture();
     $('preview-state').textContent = state.stopped ? '已停止' : '连接中断';
@@ -50,39 +96,64 @@ function updateDevice(device) {
   if (!state.stream) drawDemo();
 }
 
+async function syncDevice(device, epoch, { resume = false } = {}) {
+  if (epoch !== state.epoch) return false;
+  if (device.frame.id !== state.device?.frame.id) {
+    const image = new Image();
+    image.src = device.frame.src;
+    const decoding = [image.decode()];
+    if (device.so101) {
+      const observer = new Image();
+      observer.src = device.so101.armView;
+      decoding.push(observer.decode());
+    }
+    await Promise.all(decoding);
+    if (epoch !== state.epoch) return false;
+    state.simulatedImage = image;
+  }
+  if (resume) state.stopped = false;
+  updateDevice(device);
+  return true;
+}
+
 function updateAvailability() {
-  const blocked = !state.online || state.stopped || state.busy || state.capturePending || state.guidePending || state.cameraPending;
+  const moving = state.busy || state.device?.state === 'MOVING';
+  const blocked = !state.online || state.stopped || moving || state.capturePending || state.guidePending || state.cameraPending;
   document.querySelectorAll('[data-direction]').forEach(button => { button.disabled = blocked; });
-  $('capture-button').disabled = blocked;
-  $('home-button').disabled = !state.online || state.busy || state.capturePending || state.guidePending;
+  $('capture-button').disabled = blocked || !(state.stream || state.simulatedImage);
+  $('home-button').disabled = !state.online || moving || state.stopPending || state.capturePending || state.guidePending;
+}
+
+function markControlUnavailable() {
+  state.online = false;
+  cancelCapture();
+  $('service-status').textContent = '控制服务未连接';
+  $('service-dot').classList.add('offline');
+  $('preview-state').textContent = '等待控制服务';
+  updateAvailability();
 }
 
 async function pollStatus() {
+  if (polling || state.busy || state.stopPending || state.capturePending) return;
+  polling = true;
   const epoch = state.epoch;
   try {
-    const device = await deviceApi.status();
-    if (epoch === state.epoch) updateDevice(device);
+    await syncDevice(await deviceApi.status(), epoch);
   } catch {
     if (epoch !== state.epoch) return;
     const wasOnline = state.online;
-    state.online = false;
-    cancelCapture();
-    $('service-status').textContent = '控制服务未连接';
-    $('service-dot').classList.add('offline');
-    $('preview-state').textContent = '等待控制服务';
-    updateAvailability();
-    if (wasOnline) notify('控制服务断开，拍摄已取消。请检查 Spring Boot 服务。', true);
+    markControlUnavailable();
+    if (wasOnline) notify('无法同步设备状态或模拟画面，请检查网页和仿真服务。', true);
+  } finally {
+    polling = false;
   }
 }
 
 function drawDemo() {
-  if (!demoImage.complete || !demoImage.naturalWidth || state.stream) return;
-  ctx.fillStyle = '#c8c9b9';
-  ctx.fillRect(0, 0, preview.width, preview.height);
-  const x = -(state.device?.x || 0) * 3;
-  const y = (state.device?.y || 0) * 3;
-  // 留出边缘余量，仅表现模拟机位变化，不执行真实坐标转换。
-  ctx.drawImage(demoImage, -60 + x, -40 + y, 1320, 880);
+  if (state.simulatedImage && !state.stream) {
+    $('source-label').textContent = state.device?.so101 ? '◉ SO-101 三维仿真 · 腕部视角' : '◉ 模拟场景 · 非实时摄像头';
+    ctx.drawImage(state.simulatedImage, 0, 0, preview.width, preview.height);
+  }
 }
 
 function syncCrop() {
@@ -134,8 +205,11 @@ function cancelCapture() {
 }
 
 async function stopAll() {
+  if (state.stopPending) return;
+  state.stopPending = true;
   state.epoch++;
   cancelCapture();
+  const epoch = state.epoch;
   state.stopped = true;
   state.guidePending = false;
   $('guide-done').hidden = true;
@@ -146,34 +220,39 @@ async function stopAll() {
   updateAvailability();
   // 停止请求独立直达控制端，不经过语音或构图逻辑。
   try {
-    updateDevice(await deviceApi.stop());
+    if (!await syncDevice(await deviceApi.stop(), epoch)) return;
     notify('已停止：倒计时和人物指导已取消，回初始位后恢复。');
   } catch (error) {
     state.online = false;
     $('service-status').textContent = '停止请求未确认';
     $('service-dot').classList.add('offline');
-    updateAvailability();
     notify(`页面操作已取消；控制端停止未确认：${error.message}`, true);
+  } finally {
+    state.stopPending = false;
+    updateAvailability();
   }
 }
 
 async function move(direction) {
-  if (!state.online || state.stopped || state.busy || state.capturePending || state.guidePending) {
+  if (!state.online || state.stopped || state.busy || state.capturePending || state.guidePending || state.cameraPending) {
     notify('当前不能调整机位，请先完成指导、等待拍摄结束或回初始位。', true);
     return;
   }
-  const epoch = state.epoch;
+  const epoch = ++state.epoch;
   state.busy = true;
   updateAvailability();
   $('preview-state').textContent = '模拟机位调整';
   try {
     const device = await deviceApi.move(direction);
-    if (epoch !== state.epoch) return;
-    updateDevice(device);
-    $('preview-state').textContent = '模拟微调完成';
+    if (!await syncDevice(device, epoch)) return;
+    $('preview-state').textContent = device.so101 ? device.message : '模拟微调完成';
     log(device.message);
   } catch (error) {
-    if (epoch === state.epoch) { $('preview-state').textContent = '调整暂停'; notify(error.message, true); }
+    if (epoch === state.epoch) {
+      if (!error.status || error.status >= 500) markControlUnavailable();
+      $('preview-state').textContent = '调整暂停';
+      notify(error.message, true);
+    }
   } finally {
     state.busy = false;
     updateAvailability();
@@ -181,24 +260,27 @@ async function move(direction) {
 }
 
 async function home() {
-  if (state.busy || state.guidePending) return notify('请先完成当前操作或点击停止。');
+  if (state.busy || state.stopPending || state.guidePending) return notify('请先完成当前操作或点击停止。');
   cancelCapture();
   const epoch = ++state.epoch;
   state.busy = true;
   updateAvailability();
   try {
     const device = await deviceApi.home();
-    if (epoch !== state.epoch) return;
-    state.stopped = false;
-    updateDevice(device);
+    if (!await syncDevice(device, epoch, { resume: true })) return;
     $('preview-state').textContent = '等待拍摄';
     notify(device.message);
-  } catch (error) { notify(error.message, true); }
+  } catch (error) {
+    if (epoch === state.epoch) {
+      if (!error.status || error.status >= 500) markControlUnavailable();
+      notify(error.message, true);
+    }
+  }
   finally { state.busy = false; updateAvailability(); }
 }
 
 async function capture() {
-  if (!state.online || state.stopped || state.busy || state.capturePending || state.guidePending || state.cameraPending || !demoImage.naturalWidth) {
+  if (!state.online || state.stopped || state.busy || state.capturePending || state.guidePending || state.cameraPending || !(state.stream || state.simulatedImage)) {
     notify('暂时无法拍摄，请检查控制服务，完成当前操作或回初始位。', true);
     return;
   }
@@ -224,6 +306,8 @@ async function capture() {
         const current = await deviceApi.status();
         if (epoch !== state.epoch) return;
         if (!current.connected || current.state !== 'IDLE') throw new Error('控制端状态变化，已取消拍摄');
+        if (current.frame.id !== device.frame.id) throw new Error('倒计时期间机位已变化，已取消拍摄');
+        if (!await syncDevice(current, epoch)) return;
         const original = document.createElement('canvas');
         original.width = preview.width;
         original.height = preview.height;
@@ -233,7 +317,9 @@ async function capture() {
         renderGallery();
         $('preview-state').textContent = '已拍摄';
         notify('已保存原片与裁剪结果，点击下方照片可编辑和下载。');
-      } catch (error) { $('preview-state').textContent = '拍摄暂停'; notify(error.message, true); }
+      } catch (error) {
+        if (epoch === state.epoch) { $('preview-state').textContent = '拍摄暂停'; notify(error.message, true); }
+      }
       finally {
         if (epoch === state.epoch) {
           state.capturePending = false;
@@ -339,7 +425,7 @@ function guide() {
 function runCommand(text) {
   if (!text.trim()) return;
   log(`你：${text}`);
-  const command = parseCommand(text);
+  const command = parseCommand(text, { depthMovement: Boolean(state.device?.so101) });
   switch (command.type) {
     case 'STOP': stopAll(); break;
     case 'HOME': home(); break;
@@ -456,9 +542,6 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { can
 window.addEventListener('pagehide', releaseCamera);
 attachDrag($('live-crop'), () => state.crop, () => ({ width: preview.width, height: preview.height }), changeCrop);
 attachDrag($('editor-crop'), () => state.draft, () => ({ width: state.selected.original.width, height: state.selected.original.height }), syncEditor);
-demoImage.onload = drawDemo;
-demoImage.onerror = () => notify('模拟场景加载失败，请检查静态资源。', true);
-demoImage.src = '/assets/demo-scene.svg';
 syncCrop();
 setupVoice();
 updateAvailability();

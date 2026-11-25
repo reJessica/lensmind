@@ -1,6 +1,6 @@
 // B 成员：这里是可替换的规则解析器。尚未接入 ASR 服务、LLM 或姿态识别。
 // 不猜测有歧义的方向，不将数字放大翻译成真实机位运动。
-export function parseCommand(text) {
+export function parseCommand(text, { depthMovement = false } = {}) {
   const value = text.trim().replace(/[，。！？!?,.\s]/g, '');
   if (/停止|别动|停下|急停/.test(value)) return { type: 'STOP' };
   if (/不要|别拍|不拍/.test(value)) return { type: 'CLARIFY', message: '未执行拍摄。需要取消所有当前操作时，请说“停止”。' };
@@ -10,9 +10,14 @@ export function parseCommand(text) {
   if (/动作建议|动作指导|姿势|怎么摆/.test(value)) return { type: 'GUIDE' };
   if (/放大|拉近|缩小|拉远/.test(value) && !/相机|镜头|机位/.test(value)) return { type: 'ZOOM', delta: /缩小|拉远/.test(value) ? -.15 : .15 };
   if (/相机|镜头|机位/.test(value)) {
-    if (/靠近|远离|前|后|近|远/.test(value)) return { type: 'CLARIFY', message: '前后移动需要真实空间规划，当前仅支持模拟上下左右微调。可说“放大一点”进行数字裁剪。' };
-    const directions = [['左', 'LEFT'], ['右', 'RIGHT'], ['上', 'UP'], ['下', 'DOWN']].filter(([word]) => value.includes(word));
-    if (directions.length === 1) return { type: 'MOVE', direction: directions[0][1] };
+    if (!depthMovement && /前|后|近|远/.test(value)) return { type: 'CLARIFY', message: '二维模拟支持上下左右。请在三维仿真中尝试相机前后移动。' };
+    const directions = [[/左/, 'LEFT'], [/右/, 'RIGHT'], [/上|升高|抬高/, 'UP'], [/下|降低/, 'DOWN']];
+    if (depthMovement) {
+      directions.push([/前|近/, 'FORWARD'], [/后|远|退/, 'BACKWARD'],
+        [/抬头|仰起/, 'PITCH_UP'], [/低头|俯下/, 'PITCH_DOWN']);
+    }
+    const matches = directions.filter(([pattern]) => pattern.test(value));
+    if (matches.length === 1) return { type: 'MOVE', direction: matches[0][1] };
     return { type: 'CLARIFY', message: '请明确一个机位方向，例如“相机向左一点”。' };
   }
   if (/居中|三分|靠左|靠右|半身|全身/.test(value)) {

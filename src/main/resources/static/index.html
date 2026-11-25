@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#253b33">
   <title>灵眸 LensMind · 摄影工作台</title>
   <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
-  <link rel="stylesheet" href="/css/style.css">
-  <script type="module" src="/js/app.js"></script>
+  <link rel="stylesheet" href="/css/style.css?v=so101-pitch">
+  <script type="module" src="/js/app.js?v=so101-pitch"></script>
 </head>
 <body>
   <aside class="sidebar">
@@ -50,7 +50,36 @@
           <div class="settings-content">
             <section class="setting-group"><div class="setting-title"><h3>构图方式</h3><span>数字裁剪演示</span></div><div class="segmented" id="composition-options"><button data-composition="center" class="selected" aria-pressed="true">居中</button><button data-composition="left" aria-pressed="false">左三分</button><button data-composition="right" aria-pressed="false">右三分</button></div><div class="segmented compact" id="framing-options"><button data-framing="half" class="selected" aria-pressed="true">半身</button><button data-framing="full" aria-pressed="false">全身</button></div></section>
             <section class="setting-group"><div class="setting-title"><h3>画幅比例</h3><span>拖动画框调整位置</span></div><div class="ratio-options" id="ratio-options"><button data-ratio="original">原比例</button><button data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4" class="selected">3:4</button><button data-ratio="16:9">16:9</button><button data-ratio="9:16">9:16</button></div><label class="range-label" for="zoom">数字放大 <output id="zoom-value">1.15×</output></label><input id="zoom" type="range" min="1" max="2.5" value="1.15" step="0.05"></section>
-            <section class="setting-group"><div class="setting-title"><h3>机位微调</h3><span class="mock-tag">模拟</span></div><div class="movement-layout"><div class="direction-pad"><button data-direction="UP" aria-label="相机向上">↑</button><button data-direction="LEFT" aria-label="相机向左">←</button><button id="home-button" aria-label="回初始位" title="回初始位">⌂</button><button data-direction="RIGHT" aria-label="相机向右">→</button><button data-direction="DOWN" aria-label="相机向下">↓</button></div><div class="movement-note"><b>小步调整，更从容</b><p>方向按预览画面左右。<br>真实设备尚未连接。</p><span id="position-label">X 0 · Y 0</span></div></div></section>
+            <section id="movement-controls" class="setting-group">
+              <div class="setting-title"><h3>机位微调</h3><span class="mock-tag">模拟</span></div>
+              <div class="movement-layout">
+                <div class="direction-pad">
+                  <button id="move-top" data-direction="UP" aria-label="相机向上">↑</button>
+                  <button id="move-left" data-direction="LEFT" aria-label="相机向左">←</button>
+                  <button id="home-button" aria-label="回初始位" title="回初始位">⌂</button>
+                  <button id="move-right" data-direction="RIGHT" aria-label="相机向右">→</button>
+                  <button id="move-bottom" data-direction="DOWN" aria-label="相机向下">↓</button>
+                </div>
+                <div id="camera-adjustments" class="camera-adjustments" hidden>
+                  <div role="group" aria-label="镜头高度">
+                    <button data-direction="UP" title="镜头上升 5 毫米">上升</button>
+                    <button data-direction="DOWN" title="镜头下降 5 毫米">下降</button>
+                  </div>
+                  <div role="group" aria-label="镜头俯仰">
+                    <button data-direction="PITCH_UP" title="镜头抬头 1 度">抬头</button>
+                    <button data-direction="PITCH_DOWN" title="镜头低头 1 度">低头</button>
+                  </div>
+                </div>
+                <div class="movement-note">
+                  <p id="movement-hint">方向按预览画面左右。</p>
+                  <span id="position-label" aria-live="polite">X 0 · Y 0</span>
+                </div>
+              </div>
+            </section>
+            <details id="so101-view" class="setting-group" open hidden>
+              <summary>SO-101 机械臂外部视角</summary>
+              <img id="so101-arm-image" alt="SO-101 仿真机械臂外部视角" width="480" height="320">
+            </details>
             <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
             <button id="capture-button" class="capture-button"><span>◉</span> 拍一张照片 <small>开始创作</small></button>
             <button id="camera-button" class="camera-button">＋ 使用电脑摄像头</button>
@@ -67,7 +96,7 @@
   </div>
 
   <dialog id="photo-dialog" class="photo-dialog"><div class="dialog-header"><div><h2 id="photo-title">照片预览</h2><p id="photo-subtitle">原片始终保留，裁剪不会改变原片。</p></div><button data-stop class="stop-button">■ 停止</button><button id="close-photo" class="icon-button" aria-label="关闭照片预览">×</button></div><div class="editor-stage" id="editor-stage"><canvas id="editor-canvas"></canvas><div id="editor-crop" class="crop-frame" aria-label="拖动照片裁剪框"><span>拖动调整</span><i></i><i></i><i></i><i></i></div></div><div class="editor-controls"><label>比例 <select id="editor-ratio"><option value="original">原比例</option><option>1:1</option><option>4:3</option><option>3:4</option><option>16:9</option><option>9:16</option></select></label><label>放大 <input id="editor-zoom" type="range" min="1" max="2.5" step="0.05"></label><button id="undo-crop">撤销裁剪</button><button id="save-crop" class="primary-button">保存裁剪</button></div><div class="dialog-actions"><button id="download-original">↓ 下载原片</button><button id="download-crop" class="primary-button">↓ 下载成片</button><button id="retake">重新拍摄</button></div></dialog>
-  <dialog id="help-dialog" class="help-dialog"><div class="dialog-header"><h2>欢迎使用灵眸</h2><button data-stop class="stop-button">■ 停止</button><button id="close-help" class="icon-button" aria-label="关闭使用说明">×</button></div><p>这是团队协作的初始框架。默认使用本地插画作为取景场景，所有机位操作都是模拟，不会控制真实机械臂。</p><ol><li>选择构图和比例，拖动裁剪框调整保留范围。</li><li>输入“拍照”或按拍摄按钮，等待倒计时。</li><li>点击照片编辑裁剪，分别下载原片和成片。</li><li>按 Esc 或“停止”取消当前操作；回初始位后恢复。</li></ol><p>语音识别取决于浏览器支持与麦克风权限，可能使用浏览器提供方的在线服务；文字输入始终可用。电脑摄像头仅在你点击并授权后开启，真实摄像头模式尚无人物识别或自动稳定检测。</p><p>“放大一点”只做数字裁剪。“相机靠近一点”等三维移动需要未来的硬件规划接口。人物指导为预设文案，点击完成后才会继续。</p></dialog>
+  <dialog id="help-dialog" class="help-dialog"><div class="dialog-header"><h2>欢迎使用灵眸</h2><button data-stop class="stop-button">■ 停止</button><button id="close-help" class="icon-button" aria-label="关闭使用说明">×</button></div><p>这是团队协作的初始框架。默认使用本地插画作为取景场景，所有机位操作都是模拟，不会控制真实机械臂。</p><ol><li>选择构图和比例，拖动裁剪框调整保留范围。</li><li>输入“拍照”或按拍摄按钮，等待倒计时。</li><li>点击照片编辑裁剪，分别下载原片和成片。</li><li>按 Esc 或“停止”取消当前操作；回初始位后恢复。</li></ol><p>语音识别取决于浏览器支持与麦克风权限，可能使用浏览器提供方的在线服务；文字输入始终可用。电脑摄像头仅在你点击并授权后开启，真实摄像头模式尚无人物识别或自动稳定检测。</p><p>「放大一点」使用数字裁剪。三维仿真中，「相机靠近一点」会前移镜头。人物指导为预设文案，点击完成后才会继续。</p></dialog>
   <div class="toast" id="toast" role="status" hidden></div>
 </body>
 </html>

@@ -12,6 +12,21 @@ test('放大、构图和机位意图保持区分', () => {
   assert.equal(parseCommand('相机向左再向右').type, 'CLARIFY');
 });
 
+test('三维机位支持前后、上下和俯仰，混合方向指令需要先明确一步', () => {
+  const mode = { depthMovement: true };
+  assert.deepEqual(parseCommand('相机靠近一点', mode), { type: 'MOVE', direction: 'FORWARD' });
+  assert.deepEqual(parseCommand('镜头往后退', mode), { type: 'MOVE', direction: 'BACKWARD' });
+  assert.equal(parseCommand('相机向右前进', mode).type, 'CLARIFY');
+  assert.deepEqual(parseCommand('相机向上', mode), { type: 'MOVE', direction: 'UP' });
+  assert.deepEqual(parseCommand('镜头降低一点', mode), { type: 'MOVE', direction: 'DOWN' });
+  assert.equal(parseCommand('相机向前并抬高', mode).type, 'CLARIFY');
+  assert.deepEqual(parseCommand('镜头抬头一点', mode), { type: 'MOVE', direction: 'PITCH_UP' });
+  assert.deepEqual(parseCommand('相机低头一点', mode), { type: 'MOVE', direction: 'PITCH_DOWN' });
+  assert.equal(parseCommand('镜头抬头一点').type, 'CLARIFY');
+  assert.equal(parseCommand('相机抬头并升高', mode).type, 'CLARIFY');
+  assert.equal(parseCommand('拉近一点', mode).type, 'ZOOM');
+});
+
 test('停止优先，否定拍摄不触发快门', () => {
   assert.equal(parseCommand('停止拍照').type, 'STOP');
   assert.equal(parseCommand('不要拍照').type, 'CLARIFY');
