@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "LensMind 三维仿真",
+      "request": "launch",
+      "mainClass": "com.example.lensmind.LensmindApplication",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "LENSMIND_DEVICE_BACKEND": "mujoco",
+        "LENSMIND_MUJOCO_PORT": "8765",
+        "PORT": "8080"
+      }
+    }
+  ]
+}
