@@ -380,3 +380,11 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
   .topbar .stop-button kbd { display: none; }
   .ai-panel { padding: 11px; }
 }
+
+.camera-adjustments { display: grid; gap: 6px; }
+.camera-adjustments [role="group"] { display: flex; gap: 6px; }
+.camera-adjustments button { padding: 5px 8px; font-size: 10px; }
+#so101-arm-image { display: block; width: 100%; height: auto; margin-top: 8px; border-radius: 8px; }
+@media (max-width: 520px) {
+  #device-tools[data-so101] .movement-note { display: block; }
+}

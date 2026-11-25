@@ -58,7 +58,7 @@ class AiTests {
         assertEquals(reference, content.path(2).path("image_url").path("url").asText());
         assertFalse(client.sentPayload.toString().contains("fake-test-only"));
         controller.disconnect(analyze);
-        assertEquals(409, assertThrows(AiException.class, () -> controller.analyze(request(Map.of()))).status);
+        assertEquals(409, assertThrows(AiException.class, () -> controller.analyze(request(Map.of()))).status().value());
     }
 
     @Test
@@ -66,15 +66,15 @@ class AiTests {
         var client = new StubClient();
         for (String url : List.of("https://example.com/v1", "http://api.openai.com/v1", "https://127.0.0.1/v1",
                 "https://api.openai.com:123/v1", "https://api.openai.com@google.com/v1", "https://api.openai.com/v1?key=value")) {
-            assertEquals(400, assertThrows(AiException.class, () -> client.connection(url, "vision-model", "dummy")).status);
+            assertEquals(400, assertThrows(AiException.class, () -> client.connection(url, "vision-model", "dummy")).status().value());
         }
         var controller = new AiController(client, mapper);
         var crossOrigin = request(Map.of());
         crossOrigin.addHeader("Origin", "http://localhost:4030");
-        assertEquals(403, assertThrows(AiException.class, () -> controller.status(crossOrigin)).status);
+        assertEquals(403, assertThrows(AiException.class, () -> controller.status(crossOrigin)).status().value());
         var external = request(Map.of());
         external.setRemoteAddr("192.0.2.1");
-        assertEquals(403, assertThrows(AiException.class, () -> controller.status(external)).status);
+        assertEquals(403, assertThrows(AiException.class, () -> controller.status(external)).status().value());
     }
 
     @Test
@@ -111,10 +111,10 @@ class AiTests {
             var input = request(Map.of("connectionId", "stale", "scene", "fake"));
             input.setSession((MockHttpSession) open.getSession());
             controller.analyze(input);
-        }).status);
+        }).status().value());
         var badImage = request(Map.of("connectionId", connection.get("id"), "scene", AiModelClient.JPEG + "YXNkZg=="));
         badImage.setSession((MockHttpSession) open.getSession());
-        assertEquals(400, assertThrows(AiException.class, () -> controller.analyze(badImage)).status);
+        assertEquals(400, assertThrows(AiException.class, () -> controller.analyze(badImage)).status().value());
         assertEquals(1, client.calls);
     }
 

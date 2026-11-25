@@ -129,7 +129,31 @@
             </div>
             <section class="setting-group"><div class="setting-title"><h3>画幅比例</h3><span>拖框移动 · 拖角缩放</span></div><div class="ratio-options" id="ratio-options"><button data-ratio="original">原比例</button><button data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4" class="selected">3:4</button><button data-ratio="16:9">16:9</button><button data-ratio="9:16">9:16</button></div></section>
             <section class="setting-group"><div class="setting-title"><h3>构图方式</h3><span>数字裁剪</span></div><div class="segmented" id="composition-options"><button data-composition="center" class="selected" aria-pressed="true">居中</button><button data-composition="left" aria-pressed="false">左三分</button><button data-composition="right" aria-pressed="false">右三分</button></div><div class="segmented compact" id="framing-options" role="group" aria-label="景别"><button data-framing="any" class="selected" aria-pressed="true">不限景别</button><button data-framing="half" aria-pressed="false">半身</button><button data-framing="full" aria-pressed="false">全身</button></div></section>
-            <details class="settings-disclosure" id="device-tools"><summary>模拟机位</summary><div class="movement-layout"><div class="direction-pad"><button data-direction="UP" aria-label="相机向上">↑</button><button data-direction="LEFT" aria-label="相机向左">←</button><button id="home-button" aria-label="回初始位" title="回初始位">⌂</button><button data-direction="RIGHT" aria-label="相机向右">→</button><button data-direction="DOWN" aria-label="相机向下">↓</button></div><div class="movement-note"><p>方向以取景画面为准。</p><span id="position-label">X 0 · Y 0</span></div></div></details>
+            <details class="settings-disclosure" id="device-tools">
+              <summary>模拟机位</summary>
+              <div class="movement-layout">
+                <div class="direction-pad">
+                  <button id="move-top" data-direction="UP" aria-label="相机向上">↑</button>
+                  <button data-direction="LEFT" aria-label="相机向左">←</button>
+                  <button id="home-button" aria-label="回初始位" title="回初始位">⌂</button>
+                  <button data-direction="RIGHT" aria-label="相机向右">→</button>
+                  <button id="move-bottom" data-direction="DOWN" aria-label="相机向下">↓</button>
+                </div>
+                <div id="camera-adjustments" class="camera-adjustments" hidden>
+                  <div role="group" aria-label="镜头高度">
+                    <button data-direction="UP">上升</button><button data-direction="DOWN">下降</button>
+                  </div>
+                  <div role="group" aria-label="镜头俯仰">
+                    <button data-direction="PITCH_UP">抬头</button><button data-direction="PITCH_DOWN">低头</button>
+                  </div>
+                </div>
+                <div class="movement-note"><p>方向以取景画面为准。</p><span id="position-label" aria-live="polite">X 0 · Y 0</span></div>
+              </div>
+            </details>
+            <details class="settings-disclosure" id="so101-view" open hidden>
+              <summary>SO-101 机械臂外部视角</summary>
+              <img id="so101-arm-image" alt="SO-101 仿真机械臂外部视角" width="480" height="320">
+            </details>
           </div>
         </aside>
 

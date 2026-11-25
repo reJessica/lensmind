@@ -67,7 +67,7 @@ function parsePeople(value) {
 }
 
 // 文字输入和浏览器语音转写共用同一套指令。
-export function parseCommand(text) {
+export function parseCommand(text, { depthMovement = false } = {}) {
   const clauses = text.split(/[，,。；;、]+|(?:再|并且|然后)(?=把|让|用|设|换|改|调)|(?<=画幅|比例)(?=让|把|人物)/)
     .filter(clause => clause.trim());
   const ratioClauses = clauses.map(ratioFromClause);
@@ -76,16 +76,16 @@ export function parseCommand(text) {
   if (ratios.length) {
     const rest = clauses.filter((_, index) => !ratioClauses[index]).join('，');
     if (!rest) return { type: 'RATIO', ratio: ratios[0] };
-    const command = parseCompositionCommand(rest);
+    const command = parseCompositionCommand(rest, depthMovement);
     if (['COMPOSE', 'POSITION_HEAD', 'POSITION_BODY', 'POSITION_PEOPLE', 'POSITION_SELECTED'].includes(command.type)) {
       return { ...command, ratio: ratios[0] };
     }
     return command.type === 'STOP' ? command : clarify('请说清画幅比例和构图要求。');
   }
-  return parseCompositionCommand(text);
+  return parseCompositionCommand(text, depthMovement);
 }
 
-function parseCompositionCommand(text) {
+function parseCompositionCommand(text, depthMovement) {
   const value = normalize(text).replace(/[呀啊吧]+$/, '');
   const stopCheck = value.replace(/(?:不要|不必|不用|别|请勿)(?:再)?(?:停止|停下|急停)/g, '');
   if (/停止|别动|停下|急停/.test(stopCheck)) return { type: 'STOP' };
@@ -129,6 +129,15 @@ function parseCompositionCommand(text) {
   if (enlarge && shrink) return clarify('你希望放大还是缩小画面？');
   if ((enlarge || shrink) && !/靠近|远离|机位/.test(value)) {
     return { type: 'ZOOM', delta: shrink ? -.15 : .15 };
+  }
+
+  if (adjustCamera && depthMovement && /左|右|上|下|升高|抬高|降低|前|后|近|远|退|抬头|仰起|低头|俯/.test(value)) {
+    const directions = [
+      [/左/, 'LEFT'], [/右/, 'RIGHT'], [/上|升高|抬高/, 'UP'], [/(?<!俯)下|降低/, 'DOWN'],
+      [/前|近/, 'FORWARD'], [/后|远|退/, 'BACKWARD'], [/抬头|仰起/, 'PITCH_UP'], [/低头|俯下/, 'PITCH_DOWN'],
+    ].filter(([pattern]) => pattern.test(value));
+    if (directions.length === 1) return { type: 'MOVE', direction: directions[0][1] };
+    return clarify('请明确一个机位方向，例如“镜头抬头一点”。');
   }
 
   const nearer = /靠近|近一点|向前|往前|前移/.test(value) || (adjustCamera && /拉近/.test(value));

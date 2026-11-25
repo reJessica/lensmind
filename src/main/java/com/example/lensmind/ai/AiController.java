@@ -23,7 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-@RestController
+@RestController("photographyAiController")
 @RequestMapping(value = "/api/ai", produces = MediaType.APPLICATION_JSON_VALUE)
 class AiController {
     private static final int MAX_IMAGE_LENGTH = 1_200_000;
@@ -95,7 +95,7 @@ class AiController {
 
     @ExceptionHandler(AiException.class)
     ResponseEntity<?> handle(AiException exception) {
-        return ResponseEntity.status(exception.status).cacheControl(CacheControl.noStore()).body(Map.of("message", exception.getMessage()));
+        return ResponseEntity.status(exception.status()).cacheControl(CacheControl.noStore()).body(Map.of("message", exception.getMessage()));
     }
 
     private ResponseEntity<?> success(Object result) {

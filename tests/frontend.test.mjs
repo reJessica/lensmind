@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { isSpokenShutter, parseCommand } from '../src/main/resources/static/js/commands.js';
 import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resources/static/js/crop.js';
 import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
+import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 
 test('描述要拍的照片时，明确的画幅和四格区域从文字或语音转写直接设置', () => {
   const four = { type: 'POSITION_BODY', cells: [3, 4, 6, 7] };
@@ -436,4 +437,30 @@ test('voice feedback waits for a consistent cue, deduplicates it and cancels whe
   voice.setEnabled(false);
   assert.equal(messages.at(-1), 'cancel');
   assert.equal(voice.speak('不应播放'), false);
+});
+
+test('三维机位支持前后、上下和俯仰，混合方向指令需要先明确一步', () => {
+  const mode = { depthMovement: true };
+  assert.deepEqual(parseCommand('相机靠近一点', mode), { type: 'MOVE', direction: 'FORWARD' });
+  assert.deepEqual(parseCommand('镜头往后退', mode), { type: 'MOVE', direction: 'BACKWARD' });
+  assert.equal(parseCommand('相机向右前进', mode).type, 'CLARIFY');
+  assert.deepEqual(parseCommand('相机向上', mode), { type: 'MOVE', direction: 'UP' });
+  assert.deepEqual(parseCommand('镜头降低一点', mode), { type: 'MOVE', direction: 'DOWN' });
+  assert.equal(parseCommand('相机向前并抬高', mode).type, 'CLARIFY');
+  assert.deepEqual(parseCommand('镜头抬头一点', mode), { type: 'MOVE', direction: 'PITCH_UP' });
+  assert.deepEqual(parseCommand('相机低头一点', mode), { type: 'MOVE', direction: 'PITCH_DOWN' });
+  assert.equal(parseCommand('镜头抬头一点').type, 'CLARIFY');
+  assert.equal(parseCommand('相机抬头并升高', mode).type, 'CLARIFY');
+  assert.equal(parseCommand('拉近一点', mode).type, 'ZOOM');
+});
+
+test('录音编码为真实 PCM WAV，并拒绝超过时长的输入', async () => {
+  const wav = encodeWav(new Float32Array([0, 1, -1, 0]), 16000);
+  const view = new DataView(await wav.arrayBuffer());
+  assert.equal(wav.type, 'audio/wav');
+  assert.equal(view.byteLength, 52);
+  assert.equal(view.getUint32(24, true), 16000);
+  assert.equal(view.getInt16(46, true), 32767);
+  assert.equal(view.getInt16(48, true), -32768);
+  assert.throws(() => encodeWav(new Float32Array(16000 * 16), 16000));
 });

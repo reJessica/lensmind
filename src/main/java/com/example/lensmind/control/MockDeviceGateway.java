@@ -1,20 +1,23 @@
 package com.example.lensmind.control;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 /** 纯内存模拟器：没有串口、舵机或网络设备调用，不代表 SO-101 真实坐标。 */
 @Service
+@ConditionalOnProperty(name = "lensmind.device.backend", havingValue = "mock", matchIfMissing = true)
 public class MockDeviceGateway implements DeviceGateway {
     private int x;
     private int y;
     private String state = "IDLE";
     private String message = "模拟控制服务就绪，真实机械臂未接入";
+    private DeviceFrame frame = MockCamera.render(0, 0);
 
     @Override
     public synchronized DeviceStatus status() {
-        return new DeviceStatus("MOCK", true, state, x, y, message);
+        return new DeviceStatus("MOCK", true, state, x, y, message, frame);
     }
 
     @Override
@@ -37,16 +40,14 @@ public class MockDeviceGateway implements DeviceGateway {
         if (Math.abs(nextX) > 20 || Math.abs(nextY) > 20) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "超出模拟工作范围（±20），调整未执行");
         }
-        x = nextX;
-        y = nextY;
+        setPosition(nextX, nextY);
         message = "已完成模拟机位微调";
         return status();
     }
 
     @Override
     public synchronized DeviceStatus home() {
-        x = 0;
-        y = 0;
+        setPosition(0, 0);
         state = "IDLE";
         message = "已回模拟初始位";
         return status();
@@ -57,5 +58,12 @@ public class MockDeviceGateway implements DeviceGateway {
         state = "STOPPED";
         message = "模拟动作已停止；回初始位后恢复操作";
         return status();
+    }
+
+    private void setPosition(int nextX, int nextY) {
+        if (x == nextX && y == nextY) return;
+        frame = MockCamera.render(nextX, nextY);
+        x = nextX;
+        y = nextY;
     }
 }

@@ -13,7 +13,7 @@ const video = $('camera-video');
 const stopButtons = document.querySelectorAll('[data-stop]');
 const state = {
   device: null, online: false, stopped: false, stopPhase: null, stopIssue: '', stopResetConfirmed: false,
-  deviceAction: null, capturePending: false,
+  deviceAction: null, capturePending: false, simulatedImage: null,
   epoch: 0, timer: null, stream: null, cameraPending: false, cameraRequest: 0, animation: null,
   page: null, captureMode: 'assisted',
   composition: 'center', framing: 'any', sceneTarget: null,
@@ -44,6 +44,7 @@ const voice = createVoiceGuide({
   onPlayback: speech.playback,
 });
 let toastTimer;
+let polling = false;
 const stopLabels = {
   ready: '停止', stopping: '正在停止', resetting: '已停止，复位中', stopped: '已停止', restored: '已停止，已复位',
 };
@@ -113,6 +114,30 @@ function setCaptureMode(mode) {
   updateAvailability();
 }
 
+async function loadDeviceImage(src) {
+  const image = new Image();
+  image.src = src;
+  await image.decode();
+  return image;
+}
+
+async function syncDevice(device, epoch) {
+  if (epoch !== state.epoch) return false;
+  const changedFrame = device.frame?.id !== state.device?.frame?.id;
+  const armSource = device.so101?.armView;
+  const armImage = $('so101-arm-image');
+  const [image, observer] = await Promise.all([
+    changedFrame && device.frame ? loadDeviceImage(device.frame.src) : null,
+    armSource && armSource !== armImage.getAttribute('src') ? loadDeviceImage(armSource) : null,
+  ]);
+  if (epoch !== state.epoch) return false;
+  if (changedFrame) state.simulatedImage = image;
+  if (observer) armImage.src = observer.src;
+  if (!armSource) armImage.removeAttribute('src');
+  updateDevice(device);
+  return true;
+}
+
 function updateDevice(device) {
   state.device = device;
   state.online = device.connected;
@@ -121,7 +146,22 @@ function updateDevice(device) {
   state.stopped = state.stopped || device.state === 'STOPPED';
   $('service-status').textContent = state.stopIssue || (state.online ? (state.stopped ? '已停止' : '模拟控制服务已连接') : '设备已断开');
   $('service-dot').classList.toggle('offline', !state.online || state.stopped);
-  $('position-label').textContent = `X ${device.x} · Y ${device.y}`;
+  const so101 = device.so101;
+  const deviceTools = $('device-tools');
+  if (so101 && !deviceTools.hasAttribute('data-so101')) deviceTools.open = true;
+  deviceTools.toggleAttribute('data-so101', Boolean(so101));
+  $('so101-view').hidden = !so101;
+  $('camera-adjustments').hidden = !so101;
+  for (const [id, normal, simulation, label] of [
+    ['move-top', 'UP', 'FORWARD', '镜头前进'], ['move-bottom', 'DOWN', 'BACKWARD', '镜头后退'],
+  ]) {
+    const button = $(id);
+    button.dataset.direction = so101 ? simulation : normal;
+    button.setAttribute('aria-label', so101 ? label : normal === 'UP' ? '相机向上' : '相机向下');
+  }
+  $('position-label').textContent = so101
+    ? `转向 ${Math.round(so101.cameraYawDegrees)}° · 前后 ${so101.cameraTravelMillimeters} mm · 高度 ${so101.cameraElevationMillimeters} mm · 俯仰 ${Math.round(so101.cameraPitchDegrees)}°`
+    : `X ${device.x} · Y ${device.y}`;
   if (state.stopped || !state.online) {
     cancelCapture();
     $('preview-state').textContent = state.stopped ? '已停止' : '连接中断';
@@ -403,11 +443,11 @@ function showVisionReading(analysis) {
 }
 
 async function pollStatus() {
-  if (state.stopPhase) return;
+  if (polling || state.stopPhase || state.deviceAction || state.capturePending) return;
+  polling = true;
   const epoch = state.epoch;
   try {
-    const device = await deviceApi.status();
-    if (epoch === state.epoch) updateDevice(device);
+    await syncDevice(await deviceApi.status(), epoch);
   } catch {
     if (epoch !== state.epoch) return;
     const wasOnline = state.online;
@@ -420,11 +460,20 @@ async function pollStatus() {
     $('preview-state').textContent = '等待控制服务';
     updateAvailability();
     if (wasOnline) notify('控制服务断开，拍摄已取消。请检查 Spring Boot 服务。', true);
+  } finally {
+    polling = false;
   }
 }
 
 function drawDemo() {
-  if (!demoImage.complete || !demoImage.naturalWidth || state.stream) return;
+  if (state.stream) return;
+  if (state.simulatedImage) {
+    const frame = state.device.frame;
+    setPreviewSize(frame.width, frame.height);
+    ctx.drawImage(state.simulatedImage, 0, 0);
+    return;
+  }
+  if (!demoImage.complete || !demoImage.naturalWidth) return;
   ctx.fillStyle = '#c8c9b9';
   ctx.fillRect(0, 0, preview.width, preview.height);
   const x = -(state.device?.x || 0) * 3;
@@ -505,6 +554,7 @@ async function stopAll() {
   state.stopResetConfirmed = false;
   state.stopped = true;
   cancelCapture();
+  const epoch = state.epoch;
   ai.cancel('已停止等待 AI 分析，可在准备好后再次请求。');
   clearGuide();
   speech.stop();
@@ -516,8 +566,8 @@ async function stopAll() {
   try {
     const stopped = await deviceApi.stop();
     if (!stopped.connected || stopped.state !== 'STOPPED') throw new Error('控制端未返回已停止状态');
-    updateDevice(stopped);
-    if (stopped.mode !== 'MOCK') {
+    if (!await syncDevice(stopped, epoch)) return;
+    if (stopped.mode !== 'MOCK' || stopped.so101) {
       notify('已停止，倒计时和人物指导已取消。');
       return;
     }
@@ -532,7 +582,7 @@ async function stopAll() {
     }
     state.stopped = false;
     state.stopResetConfirmed = true;
-    updateDevice(restored);
+    if (!await syncDevice(restored, epoch)) return;
     setText($('preview-state'), '等待拍摄');
     notify('已取消当前操作，模拟机位已复位。可以继续拍摄。');
   } catch (error) {
@@ -553,7 +603,7 @@ async function move(direction) {
     notify('当前不能调整机位，请等待拍摄、指导或复位完成。', true);
     return;
   }
-  const epoch = state.epoch;
+  const epoch = ++state.epoch;
   voice.cancel();
   state.stopResetConfirmed = false;
   const action = state.deviceAction = deviceApi.move(direction);
@@ -562,8 +612,8 @@ async function move(direction) {
   try {
     const device = await action;
     if (epoch !== state.epoch) return;
-    updateDevice(device);
-    $('preview-state').textContent = '模拟微调完成';
+    if (!await syncDevice(device, epoch)) return;
+    $('preview-state').textContent = device.so101 ? device.message : '模拟微调完成';
     log(device.message);
   } catch (error) {
     if (epoch === state.epoch) { $('preview-state').textContent = '调整暂停'; notify(error.message, true); }
@@ -585,7 +635,7 @@ async function home() {
     if (epoch !== state.epoch) return;
     state.stopped = false;
     state.stopIssue = '';
-    updateDevice(device);
+    if (!await syncDevice(device, epoch)) return;
     $('preview-state').textContent = '等待拍摄';
     notify(device.message);
   } catch (error) { if (epoch === state.epoch) notify(error.message, true); }
@@ -594,7 +644,7 @@ async function home() {
 
 async function capture() {
   if (state.page !== 'studio') return;
-  if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending || (!state.stream && !demoImage.naturalWidth)) {
+  if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending || (!state.stream && !state.simulatedImage && !demoImage.naturalWidth)) {
     notify('暂时无法拍摄，请检查控制服务或等待当前操作完成。', true);
     return;
   }
@@ -611,6 +661,7 @@ async function capture() {
     const device = await deviceApi.status();
     if (epoch !== state.epoch) return;
     if (!device.connected || device.state !== 'IDLE') throw new Error('控制端尚未就绪，拍摄已取消');
+    if (!await syncDevice(device, epoch)) return;
     const deadline = performance.now() + Number($('delay').value) * 1000;
     const tick = async () => {
       if (epoch !== state.epoch) return;
@@ -624,6 +675,10 @@ async function capture() {
         return;
       }
       try {
+        const current = await deviceApi.status();
+        if (epoch !== state.epoch) return;
+        if (!current.connected || current.state !== 'IDLE') throw new Error('控制端状态变化，已取消拍摄');
+        if (!state.stream && current.frame?.id !== device.frame?.id) throw new Error('倒计时期间机位已变化，已取消拍摄');
         if (state.stream && video.readyState < 2) throw new Error('摄像头画面不可用，已取消拍摄');
         $('countdown-overlay').hidden = true;
         const original = document.createElement('canvas');
@@ -633,9 +688,6 @@ async function capture() {
         if (state.stream) drawCameraFrame(context);
         else context.drawImage(preview, 0, 0);
         const photo = { id: Date.now(), original, crop: { ...state.crop } };
-        const current = await deviceApi.status();
-        if (epoch !== state.epoch) return;
-        if (!current.connected || current.state !== 'IDLE') throw new Error('控制端状态变化，已取消拍摄');
         state.photos.unshift(photo);
         renderGallery();
         $('preview-state').textContent = '已拍摄';
@@ -872,7 +924,7 @@ function zoomCrop(delta) {
 
 function runCommand(text) {
   if (state.page !== 'studio' || !text.trim()) return;
-  const command = parseCommand(text);
+  const command = parseCommand(text, { depthMovement: Boolean(state.device?.so101) });
   log(`你：${text}`);
   const directShutter = isSpokenShutter(text) && (command.type === 'CAPTURE' || command.type === 'RETAKE');
   const question = /[?？]|怎么|如何|能不能|为什么|什么时候|什么样|是什么/.test(text);
