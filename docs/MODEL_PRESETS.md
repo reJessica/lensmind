@@ -64,6 +64,6 @@
 - [Qwen-Audio-TTS WebSocket](https://help.aliyun.com/zh/model-studio/qwen-audio-tts-websocket-api)
 - [Qwen3.5 Flash 快照](https://help.aliyun.com/en/model-studio/qwen3-5-flash)
 
-本地 Zipformer 权重按组长要求通过 Git LFS 随仓库分发，运行 `git lfs pull` 并按 [LOCAL_ASR.md](LOCAL_ASR.md) 启动本机服务；云端 LLM/TTS 使用组员自己的凭据。
+本地 Zipformer 权重按组长要求通过 Git LFS 随仓库分发，运行 `git lfs pull` 后启动 Spring Boot 自动拉起本机服务，详见 [LOCAL_ASR.md](LOCAL_ASR.md)；云端 LLM/TTS 使用组员自己的凭据。
 
 按用户要求移除麦克风音量及持续静音诊断，保留录音、ASR 和正常状态。设置页可选实体输入设备及音频增强。ASR/TTS/摄影 LLM 错误分别标注阶段；ASR 暂时满载、限流或超时保留麦克风，提示 3 秒后重新说，丢弃失败句且无自动重试；余额、调用限额、会话等错误仍停止收听。

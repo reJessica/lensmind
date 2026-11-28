@@ -16,7 +16,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"lensmind.ai.mode=MOCK", "lensmind.device.backend=mock"})
+        properties = {"lensmind.ai.mode=MOCK", "lensmind.device.backend=mock", "lensmind.local-asr.auto-start=false"})
 class LensmindApplicationTests {
 
     @LocalServerPort

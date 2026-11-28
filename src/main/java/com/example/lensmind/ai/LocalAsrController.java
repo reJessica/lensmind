@@ -2,6 +2,7 @@ package com.example.lensmind.ai;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,12 +22,16 @@ class LocalAsrController {
     static final String ATTRIBUTE = LocalAsrController.class.getName() + ".connection";
     private final ObjectMapper mapper;
     private final URI base;
+    private final LocalAsrProcess process;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1))
             .followRedirects(HttpClient.Redirect.NEVER).build();
 
-    LocalAsrController(ObjectMapper mapper, @Value("${lensmind.local-asr.port:9001}") int port) {
+    LocalAsrController(ObjectMapper mapper, int port) { this(mapper, port, null); }
+
+    @Autowired
+    LocalAsrController(ObjectMapper mapper, @Value("${lensmind.local-asr.port:9001}") int port, LocalAsrProcess process) {
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid local ASR port");
-        this.mapper = mapper; base = URI.create("http://127.0.0.1:" + port);
+        this.mapper = mapper; this.process = process; base = URI.create("http://127.0.0.1:" + port);
     }
 
     @GetMapping("/status") ResponseEntity<?> status(HttpServletRequest request) {
@@ -100,7 +105,7 @@ class LocalAsrController {
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt(); throw new AiException(503, "本地 ASR 请求已停止。");
         } catch (IOException error) {
-            throw new AiException(503, "本地 ASR 未启动或响应超时，请先启动 asr/local_asr_server.py；不会自动切换云端。");
+            throw new AiException(503, process == null ? "本地 ASR 未启动或响应超时；不会自动切换云端。" : process.failureHint());
         }
     }
 

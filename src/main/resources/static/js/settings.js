@@ -223,9 +223,9 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     try {
       const response = await fetch('/api/ai/local-asr/status', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
       const result = await response.json();
-      if (!response.ok || !result.ready) throw new Error(result.message || '本地 ASR 未就绪。');
+      if (!response.ok || !result.ready) throw new Error(result.message || '本地 ASR 正在准备或尚未就绪。');
       $('local-asr-status').textContent = '本地 Zipformer 已就绪 · CPU 流式识别 · 不使用云端额度。';
-    } catch (error) { $('local-asr-status').textContent = error.message || '无法连接本地 ASR，请先启动本机识别服务。'; }
+    } catch (error) { $('local-asr-status').textContent = error.message || '无法获取识别状态，请确认后端已启动。'; }
   }
   $('local-asr-check').addEventListener('click', refreshLocalAsr);
   $('reset-preferences').addEventListener('click', () => {

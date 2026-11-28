@@ -4,40 +4,39 @@
 
 固定模型：`sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`，CPU 推理，16kHz 单声道。LLM 仍使用汇云 Qwen，TTS 仍使用 UniAPI Gemini，云端服务的限流不会因切换 ASR 自动消失。
 
-## 组员首次启动
+## 自动启动（推荐）
 
-安装 Git LFS 后拉取代码和权重：
+安装 Python 3.12、Git LFS，拉取项目后先执行 `git lfs pull`。随后只需在项目根目录启动 Spring Boot：
 
-```bash
-git lfs install
-git pull
-git lfs pull
-python scripts/setup_local_asr.py --verify-only
+```powershell
+# Windows
+.\mvnw.cmd spring-boot:run
 ```
 
-三个 ONNX 文件由 Git LFS 存储，`tokens.txt` 和 SHA-256 清单是普通 Git 文件。不要只下载网页 ZIP 后就认定权重齐全；若 ONNX 是一小段 LFS 指针，运行 `git lfs pull`。也可显式运行 `python scripts/setup_local_asr.py` 从固定上游版本补齐，下载后对照清单校验。
-
-需要 Python 3.12，首次建立独立环境（不修改现有机械臂环境）。
-
-macOS / Linux：
-
 ```bash
-python3 -m venv .venv-asr
-.venv-asr/bin/python -m pip install -r asr/requirements.txt
-.venv-asr/bin/python asr/local_asr_server.py
+# macOS / Linux
+./mvnw spring-boot:run
 ```
 
-Windows PowerShell：
+后端自动复用已有的正确 ASR 服务；9001 空闲时自动创建独立 `.venv-asr` 环境，缺少依赖则安装 `asr/requirements.txt` 中的固定依赖，再加载模型。首次安装需要联网及目录写入权限，最多准备约 3 分钟；之后直接使用已安装的环境。不会自动下载模型权重，不调用云端 ASR，也不会启动机械臂服务。
+
+设置页点「检查本地 ASR 服务」可查看准备进度或具体失败原因，`ready=true` 后回拍摄页打开麦克风。自动准备失败不会阻止网页启动；修复环境后重启后端即可，不在每次识别请求中反复安装或重试。
+
+默认 ASR 端口 **9001**，网页 8080。Python 与 Java 共用 `LENSMIND_LOCAL_ASR_PORT`。如果找不到 Python，将 `LENSMIND_ASR_PYTHON` 设置为 Python 解释器完整路径（不是激活命令）；Windows 也支持 Python Launcher `py -3.12` 的自动探测。打包 JAR 仍需放在带 `scripts/`、`asr/`、`models/` 的仓库中运行，或通过 `LENSMIND_ASR_PROJECT_DIR` 指定仓库路径。
+
+关闭后端时只终止它自己启动的识别进程及子进程；预先手动启动并被复用的服务不会被关闭。其他服务占用 9001 时明确报错，不会关闭占用进程。
+
+## 手动管理（可选）
+
+设置 `LENSMIND_ASR_AUTO_START=false` 可关闭自动启动。手动安装固定依赖并运行：
 
 ```powershell
 py -3.12 -m venv .venv-asr
 .\.venv-asr\Scripts\python.exe -m pip install -r asr/requirements.txt
-.\.venv-asr\Scripts\python.exe asr\local_asr_server.py
+.\.venv-asr\Scripts\python.exe asr/local_asr_server.py --port 9001
 ```
 
-看到 `local streaming ASR ready` 后，另一个终端启动 Spring Boot：`./mvnw spring-boot:run`（Windows：`.\mvnw.cmd spring-boot:run`）。ASR 默认监听本机 9001；默认避开机械臂的 876x 端口。需要自定义时，在 Python 与 Spring Boot 两个终端设置相同的 `LENSMIND_LOCAL_ASR_PORT`，或同时修改 Python `--port` 和 Spring `--lensmind.local-asr.port`。旧进程需停止后重新启动两项服务，端口不会热更新。不要启动第二份占用相同端口的服务。
-
-设置页 ASR 固定为「本地 Zipformer」，不可切换；点击检查本地 ASR 服务。回到拍摄页开启麦克风。只使用本地 ASR 不需要 API Key；云端 TTS 仍需单独保存语音配置。麦克风来源可在设置页选择，不显示音量检测界面。
+macOS / Linux 将解释器替换为 `.venv-asr/bin/python`。界面 ASR 固定本地 Zipformer，不提供云端/浏览器切换；TTS 仍使用原 Gemini 配置，需独立保存云端语音会话。
 
 ## 实际数据链路
 

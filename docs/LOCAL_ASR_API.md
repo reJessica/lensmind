@@ -6,7 +6,7 @@
 
 | 方法 / 路径 | 输入 | 响应 |
 | --- | --- | --- |
-| GET `/status` | 无 | `ready/model/mode:LOCAL/sampleRate:16000`；服务未启动时 503 |
+| GET `/status` | 无 | `ready/model/mode:LOCAL/sampleRate:16000`；准备中或失败时 503，message 包含环境准备进度/具体失败原因 |
 | POST `/session` | `application/json`：`{"sampleRate":16000}` | `id/model/mode:LOCAL/sampleRate:16000`；同浏览器新建会关闭旧会话 |
 | POST `/audio?connectionId=...` | `application/octet-stream`：16kHz 单声道、小端 float32 PCM，范围 -1～1；每块 1～32768 字节且为 4 的倍数 | `{"mode":"LOCAL","results":[{"text":"拍摄","final":false,"segment":0}]}` |
 | POST `/reset?connectionId=...` | `application/json`，`{}` | 清除未完成句并增加段号，`results:[]`；用于 TTS 播放前清理 |
@@ -21,3 +21,5 @@ Python 服务最多 4 会话，空闲 60 秒过期。无效 PCM 返回 400，超
 启动和验证见 [本地 ASR 交接](LOCAL_ASR.md)，原有语音接口见 [API.md](API.md)。
 
 拍摄页固定使用本接口，不再提供云端或浏览器 ASR 切换。保存 TTS 的旧语音会话协议仍发送 `asr: "browser"`，仅作为「不启用云端 ASR」的兼容标记，不会启动浏览器识别。
+
+默认由 Spring Boot 在启动完成后后台自动准备识别环境，最多等待约 3 分钟，不阻塞网页启动。`LENSMIND_ASR_AUTO_START=false` 可改用手动管理；自动准备只发生在后端启动时，不因每次 `/status` 查询而重复拉起或安装。

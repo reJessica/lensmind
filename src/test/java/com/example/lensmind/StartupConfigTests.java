@@ -24,7 +24,7 @@ class StartupConfigTests {
         var app = new SpringApplication(LensmindApplication.class);
         app.setDefaultProperties(LensmindApplication.configFallback(new ClassLoader(null) {}, Path.of(".")));
         try (var context = app.run("--spring.config.location=optional:" + empty.toUri(), "--server.port=0",
-                "--lensmind.device.backend=mock", "--lensmind.ai.mode=MOCK")) {
+                "--lensmind.device.backend=mock", "--lensmind.ai.mode=MOCK", "--lensmind.local-asr.auto-start=false")) {
             assertNotNull(context.getBean("photographyAiController"));
             String hosts = context.getEnvironment().getProperty("lensmind.ai.allowed-hosts");
             assertNotNull(hosts); assertTrue(hosts.contains("zgc.apihy.com")); assertTrue(hosts.contains("api.uniapi.io"));
