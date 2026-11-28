@@ -35,7 +35,7 @@ py -3.12 -m venv .venv-asr
 .\.venv-asr\Scripts\python.exe asr\local_asr_server.py
 ```
 
-看到 `local streaming ASR ready` 后，另一个终端启动 Spring Boot：`./mvnw spring-boot:run`（Windows：`.\mvnw.cmd spring-boot:run`）。ASR 默认监听本机 8766；可同时修改 Python `--port` 和 Spring `--lensmind.local-asr.port`。不要启动第二份占用相同端口的服务。
+看到 `local streaming ASR ready` 后，另一个终端启动 Spring Boot：`./mvnw spring-boot:run`（Windows：`.\mvnw.cmd spring-boot:run`）。ASR 默认监听本机 9001；默认避开机械臂的 876x 端口。需要自定义时，在 Python 与 Spring Boot 两个终端设置相同的 `LENSMIND_LOCAL_ASR_PORT`，或同时修改 Python `--port` 和 Spring `--lensmind.local-asr.port`。旧进程需停止后重新启动两项服务，端口不会热更新。不要启动第二份占用相同端口的服务。
 
 设置页 ASR 固定为「本地 Zipformer」，不可切换；点击检查本地 ASR 服务。回到拍摄页开启麦克风。只使用本地 ASR 不需要 API Key；云端 TTS 仍需单独保存语音配置。麦克风来源可在设置页选择，不显示音量检测界面。
 

@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
@@ -117,7 +118,7 @@ def make_handler(sessions):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', type=int, default=8766)
+    parser.add_argument('--port', type=int, default=int(os.environ.get('LENSMIND_LOCAL_ASR_PORT', '9001')))
     parser.add_argument('--model-dir', type=Path, default=Path(__file__).resolve().parents[1] / 'models' / MODEL)
     args = parser.parse_args()
     names = ['tokens.txt', 'encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx']

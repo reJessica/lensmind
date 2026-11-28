@@ -24,7 +24,7 @@ class LocalAsrController {
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1))
             .followRedirects(HttpClient.Redirect.NEVER).build();
 
-    LocalAsrController(ObjectMapper mapper, @Value("${lensmind.local-asr.port:8766}") int port) {
+    LocalAsrController(ObjectMapper mapper, @Value("${lensmind.local-asr.port:9001}") int port) {
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid local ASR port");
         this.mapper = mapper; base = URI.create("http://127.0.0.1:" + port);
     }

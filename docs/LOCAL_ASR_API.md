@@ -2,7 +2,7 @@
 
 更新人：ya.liu（AI 辅助：Codex） · 2026-11-28
 
-所有接口位于同源 Spring Boot `/api/ai/local-asr`，仅接受 localhost/127.0.0.1 本机访问及合法来源，使用当前 HTTP 会话隔离录音连接。后端只代理固定 `127.0.0.1:8766`，不能传入任意 URL，不使用云端密钥或 `LiveCallBudget`。
+所有接口位于同源 Spring Boot `/api/ai/local-asr`，仅接受 localhost/127.0.0.1 本机访问及合法来源，使用当前 HTTP 会话隔离录音连接。后端只代理固定 `127.0.0.1:9001`，不能传入任意 URL，不使用云端密钥或 `LiveCallBudget`。
 
 | 方法 / 路径 | 输入 | 响应 |
 | --- | --- | --- |
