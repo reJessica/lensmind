@@ -8,7 +8,11 @@ public interface DeviceGateway {
     DeviceStatus stop();
 
     record DeviceStatus(String mode, boolean connected, String state, int x, int y, String message,
-                        DeviceFrame frame, So101View so101) {
+                        DeviceFrame frame, So101View so101, Boolean torqueHeld) {
+        public DeviceStatus(String mode, boolean connected, String state, int x, int y, String message,
+                            DeviceFrame frame, So101View so101) {
+            this(mode, connected, state, x, y, message, frame, so101, null);
+        }
         public DeviceStatus(String mode, boolean connected, String state, int x, int y, String message,
                             DeviceFrame frame) {
             this(mode, connected, state, x, y, message, frame, null);

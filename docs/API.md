@@ -10,6 +10,27 @@
 | POST | `/api/device/move` | `{"direction":"LEFT","step":1}` | 二维上下左右微调，三维转向、平移、升降和俯仰 |
 | POST | `/api/device/home` | `{}` | 模拟回初始位，同时解除停止锁定 |
 | POST | `/api/device/stop` | `{}` | 独立停止入口，后续 move 返回 409 |
+| GET | `/api/device/calibration` | 无 | 查询拍摄前校准要求和就绪状态 |
+| POST | `/api/device/calibration/start` | `{}` | 记录旧文件状态，开启手动校准任务 |
+| POST | `/api/device/calibration/verify` | `{}` | 核验本次新生成的六轴文件 |
+
+校准接口返回 `required`、`ready`、`phase`、`message` 和供本机操作的 `command`。默认 `DISABLED`，开启后进入 `REQUIRED`、`PENDING`、`VERIFIED`，缺少配置时为 `UNCONFIGURED`。新增的 `revision` 是已核验文件的标记，其余状态下为空。页面用它关联当前页面的中立位确认，并在快门和倒计时结束时复查。启用选项见 README。所有校准接口均只处理任务状态和文件。串口由操作员运行的独立脚本访问。
+
+`wristCamera` 提供腕部 USB 摄像头的配置名称，空字符串沿用普通取景。配置后，浏览器仅使用指定设备的媒体流供预览、分析与拍照。
+
+当 `LENSMIND_DEVICE_BACKEND=so101` 时，状态返回 `mode: "SO101"`，状态值为 `UNARMED`、`IDLE`、`MOVING`、`STOPPING`、`STOPPED` 或 `FAULT`。校准核验和腕部设备配置完成后，本地页面通过 `POST /api/device/arm` 申请接管，控制端核验当前姿态接近采样中立位并确认舵机保持力。移动只接受 `{"direction":"LEFT","step":1,"source":"voice"}` 或 `RIGHT`。一步为 6 个编码器刻度。控制端拒绝超出示范区间、未接管或正在移动时提交的请求。停止保持当前位置并锁定语音移动。仿真接口调用兼容原字段。
+
+`STOPPED` 时，操作员可通过 `POST /api/device/arm` 明确恢复。仍由舵机稳定保持时，控制端核对当前位置、目标、扭矩和工作范围，只解除指令锁定。舵机卸力时，需托稳并确认采样中立位后按首次接管流程恢复。采样不稳返回 409，允许重试。
+
+实机工作范围仍受左右转向示范端点与每个舵机的校准限位约束。肩部俯仰、肘、腕和夹爪可相对采样中立位偏差 ±24 编码器刻度。超出时返回偏差最大的关节及其刻度值。控制端接管时保持现场确认的当前姿态。
+
+首次接管时，底座朝向允许偏离采样中立位 ±12 编码器刻度。超出时按现场采样的左右符号提示手动修正方向和角度。
+
+网页「取消实机操控」沿用 `POST /api/device/stop`，同时关闭本页语音监听并清除中立位确认。控制端确认停稳后保持当前机位，重新接管仍需确认。
+
+实机状态的 `torqueHeld` 表示已知的扭矩保持状态。故障时为 `null`。本机操作员确认已托稳后可发起 `POST /api/device/release`，请求体须为 JSON `{"supported":true}`。实机端仅在 `STOPPED` 且运动反馈确认静止时解除扭矩。成功后确认六轴卸力，返回 `STOPPED` 与 `torqueHeld: false`。关闭网页只请求停止。
+
+实机批量反馈不可用时，控制端在同一连接中改用逐轴读取该寄存器。逐轴读取也失败时，控制端保持故障锁定并返回具体寄存器或姿态原因。
 
 响应示例：
 

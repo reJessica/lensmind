@@ -163,3 +163,8 @@ function parseCompositionCommand(text, depthMovement) {
   if (SHUTTER.test(value) || /拍照|拍一张|拍张|来一张/.test(value)) return { type: 'CAPTURE' };
   return clarify('请试试“居中的半身照”“放大一点”“相机向左一点”或“拍照”。');
 }
+export function spokenYawDirection(text) {
+  const command = text.trim().replace(/[。！!，,]/g, '').replace(/\s/g, '');
+  const match = command.match(/^(?:请)?(?:相机|镜头|机械臂)(?:向|往)?(左|右)(?:转|微转)(?:一点|一下)?$/);
+  return match ? (match[1] === '左' ? 'LEFT' : 'RIGHT') : null;
+}

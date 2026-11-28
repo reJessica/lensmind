@@ -21,6 +21,7 @@
       <div class="site-actions">
         <button id="help-button" type="button">使用说明</button>
         <button id="stop-button" class="stop-button" type="button" data-stop="ready" aria-keyshortcuts="Escape" hidden><span data-stop-icon aria-hidden="true">■</span> <span data-stop-label>停止</span> <kbd aria-hidden="true">Esc</kbd></button>
+        <button id="so101-cancel" type="button" hidden>取消操控</button>
       </div>
     </div>
   </header>
@@ -121,6 +122,33 @@
         <aside class="settings-panel panel" aria-label="拍摄设置">
           <div class="panel-title"><h2>快门与画幅</h2></div>
           <div class="settings-content">
+            <section id="so101-torque-controls" class="setting-group calibration-task" aria-labelledby="so101-torque-title" hidden>
+              <div class="setting-title"><h3 id="so101-torque-title">实机操控</h3></div>
+              <p id="so101-torque-status" role="status"></p>
+              <button id="so101-release" type="button">结束操控并卸力</button>
+            </section>
+            <section id="calibration-task" class="setting-group calibration-task" aria-labelledby="calibration-title" hidden>
+              <div class="setting-title"><h3 id="calibration-title">拍摄前校准 SO-101</h3></div>
+              <p id="calibration-status" role="status"></p>
+              <button id="calibration-start" type="button">开始校准</button>
+              <div id="neutral-position" hidden>
+                <p id="neutral-position-status" role="status">请手动摆到中立位并保持。</p>
+                <button id="neutral-position-confirm" type="button">已保持中立位</button>
+                <button id="so101-arm" type="button" hidden>启用实机语音控制（舵机上扭矩）</button>
+                <p id="so101-voice-status" role="status" hidden></p>
+              </div>
+              <div id="calibration-steps" hidden>
+                <ol>
+                  <li>退出占用这台机械臂串口的控制程序。在连接机械臂的电脑上运行下方命令，托稳手臂后输入 <code>CALIBRATE</code>。</li>
+                  <li>按终端提示将关节放到安全活动范围的中间位置，按 Enter。</li>
+                  <li>缓慢手动摆动需采样的关节，到达安全范围后按 Enter 完成记录。腕部旋转轴无需采样。</li>
+                  <li>看到终端提示校准完成后，点击「核验结果」。</li>
+                </ol>
+                <pre><code id="calibration-command"></code></pre>
+                <button id="calibration-copy" type="button">复制命令</button>
+                <button id="calibration-verify" type="button">核验结果</button>
+              </div>
+            </section>
             <div class="shutter-controls">
               <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
               <button id="capture-button" type="button" class="capture-button"><span aria-hidden="true">◉</span> 拍一张照片</button>
