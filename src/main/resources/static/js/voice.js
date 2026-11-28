@@ -12,7 +12,7 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   let lastCue = '';
   let lastCueAt = -Infinity;
 
-  function cancel() {
+  function cancel(message = '') {
     candidate = '';
     if (!active) return;
     const previous = active;
@@ -22,7 +22,7 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
       if (previous.url) URL.revokeObjectURL(previous.url);
     } else synthesis.cancel();
     if (!previous.controller || previous.playing) onPlayback(false);
-    onStatus('cancelled');
+    onStatus('cancelled', message);
   }
 
   function reset() {

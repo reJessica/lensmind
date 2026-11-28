@@ -20,4 +20,11 @@ jobs:
         with:
           node-version: '22'
       - name: Check crop boundaries and command semantics
-        run: node --test tests/frontend.test.mjs
+        run: node --test tests/frontend.test.mjs tests/assistant-voice.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check local ASR protocol without downloading weights
+        run: |
+          python -m pip install -r asr/requirements.txt
+          python -m unittest discover -s asr -p 'test_*.py'

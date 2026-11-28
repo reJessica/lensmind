@@ -4,10 +4,11 @@ import { isSpokenShutter, parseCommand, spokenYawDirection } from './commands.js
 import { capturePositionHint, COMPOSITION_X, composeAdvice, compositionRegions, cropVisionFrame, fitFrame, liveCompositionCue, pendingPersonTarget, startVision } from './vision.js';
 import { gridLabel } from './grid.js';
 import { isAiCommand, setupAi } from './ai.js';
-import { createSpeechInput, createVoiceGuide } from './voice.js';
+import { createVoiceGuide } from './voice.js';
 import { setupSettings } from './settings.js';
-import { setupCloudSpeech, createCloudSpeechInput, routeSpeechInput } from './cloud-speech.js';
-import { isCloudTts } from './model-presets.js';
+import { setupCloudSpeech } from './cloud-speech.js';
+import { isCloudTts, LOCAL_ASR_MODEL } from './model-presets.js';
+import { createLocalSpeechInput } from './local-speech.js';
 import { openWristCamera } from './wrist-camera.js';
 
 const $ = id => document.getElementById(id);
@@ -43,17 +44,16 @@ const speechHandlers = {
   onText: text => { $('command-input').value = text; },
   onCommand: text => runCommand(text, 'voice'),
 };
-const browserSpeech = createSpeechInput({
-  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
-  ...speechHandlers,
+const localSpeech = createLocalSpeechInput({ ...speechHandlers,
+  audioOptions: () => ({ deviceId: $('settings-mic-device').value, processing: $('settings-mic-processing').checked }),
+  onDeviceReady: () => settings.refreshMicrophones(),
 });
-const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers });
-const speech = routeSpeechInput(browserSpeech, cloudSpeech);
+const speech = localSpeech;
 const voice = createVoiceGuide({
   synthesis: window.speechSynthesis, Utterance: window.SpeechSynthesisUtterance,
   useCloud: () => isCloudTts($('settings-tts-model').value),
   synthesize: cloud.synthesize,
-  onError: error => setVoiceEnabled(false, error?.message || '语音播报不可用，可以查看文字提示或稍后重试。'),
+  onError: error => log(error?.message || '语音播报失败，请查看文字提示或稍后重试。', true),
   onPlayback: speech.playback,
   onStatus: (phase, message) => {
     const busy = phase === 'loading' || phase === 'playing';
@@ -63,15 +63,22 @@ const voice = createVoiceGuide({
     const messages = {
       loading: cloudTts ? '正在请求云端合成，可能需要等待约 60 秒；可点击取消，请勿重复提交。' : '正在启动浏览器播报…',
       playing: '正在播放；如听不到声音，请检查系统音量、标签页静音和音频输出设备。',
-      ended: '播报已结束。', cancelled: '已取消等待或播放；已发送的云端请求仍可能计费。',
+      ended: '播报已结束。', cancelled: message || '',
     };
     $('settings-voice-preview-status').textContent = phase === 'error' ? `试听失败：${message}` : messages[phase] || '';
+    if (state.page === 'studio') {
+      const studioMessages = {
+        loading: cloudTts ? '正在合成语音…' : '正在启动语音播报…',
+        playing: '正在朗读回答…', ended: '播报已结束。', cancelled: message || '',
+      };
+      showVoiceStatus(phase === 'error' ? `语音播报失败：${message}` : studioMessages[phase] || '');
+    }
   },
 });
 const settings = setupSettings({
   onChange: applyPreferences,
   onPreviewVoice: () => {
-    if (voice.busy) { voice.cancel(); return; }
+    if (voice.busy) { voice.cancel('试听已停止。'); return; }
     setVoiceEnabled(true);
     voice.speak('你好，我是灵眸。请看向镜头，放松肩膀。');
   },
@@ -129,6 +136,7 @@ function showPage(focus = true) {
     setText($('review-copy'), leavingStudio ? '拍摄已结束。点成片查看、调整裁剪或下载。' : '点成片可以查看大图、调整裁剪或下载。');
   }
   if (page === 'settings') { settings.refresh(); ai.refreshConnection(); cloud.refresh(); }
+  syncVoicePreference();
   updateAvailability();
   if (focus) {
     $(`${page}-title`).focus({ preventScroll: true });
@@ -146,7 +154,7 @@ function setCaptureMode(mode) {
   const manual = mode === 'manual';
   if (manual) clearGuide();
   voice.reset();
-  setText($('shoot-mode-copy'), manual ? '自行调整画幅和裁剪框。选择半身或全身时仍会检查景别。' : '摄像头取景时，人物位置和所选景别都达标后可以拍摄。');
+  setText($('shoot-mode-copy'), manual ? '自行决定取景和裁剪，半身或全身仅作构图参考。' : '构图辅助检查人物位置；半身或全身仅作参考，不限制完整入镜。');
   updateAvailability();
 }
 
@@ -605,7 +613,8 @@ async function pollStatus() {
     const wasOnline = state.online;
     state.online = false;
     state.stopResetConfirmed = false;
-    voice.reset();
+    // 设置页试听独立于设备连接，仿真断连不应打断音频。
+    if (state.page !== 'settings') voice.reset();
     cancelCapture();
     $('service-status').textContent = '控制服务未连接';
     $('service-dot').classList.add('offline');
@@ -1120,7 +1129,7 @@ function receiveAdvice(result, { pose, applySettings, cropChanged, sceneChanged 
     ? (canApply ? applyAssistantSettings(result.settings, cropChanged) : '') : null;
   if (confirmation !== null) {
     const summary = confirmation ? `当前设置：${confirmation}。` : cropChanged ? '取景已手动调整，继续使用当前设置。' : '当前画幅和构图设置保持原样。';
-    if (canApply && confirmation) voice.speak(summary);
+    if (canApply) voice.speak(summary);
     return summary;
   }
   if (!canApply || sceneChanged) return null;
@@ -1147,6 +1156,7 @@ function zoomCrop(delta) {
 
 function runCommand(text, source) {
   if (state.page !== 'studio' || !text.trim()) return;
+  syncVoicePreference();
   if (source === 'voice' && state.wristCamera) {
     const direction = spokenYawDirection(text);
     if (direction) return move(direction, source);
@@ -1212,11 +1222,20 @@ function executeCommand(command, text, source) {
   if (command.ratio) voice.speak(`当前画幅为 ${cropRatioLabel(state.crop.ratio).replace(':', ' 比 ')}。`);
 }
 
+function showVoiceStatus(message) {
+  setText($('voice-status'), message);
+  $('voice-status').hidden = !message;
+}
+
 function setVoiceEnabled(enabled, message = '') {
   state.guidanceRequested = false;
   voice.setEnabled(enabled);
-  setText($('voice-status'), message);
-  $('voice-status').hidden = !message;
+  showVoiceStatus(message);
+}
+
+function syncVoicePreference(preferences = settings.preferences) {
+  const enabled = state.page === 'studio' && !document.hidden && !state.stopped && preferences.voiceEnabled;
+  if (voice.enabled !== enabled) setVoiceEnabled(enabled);
 }
 
 function applyPreferences(preferences) {
@@ -1225,8 +1244,7 @@ function applyPreferences(preferences) {
   $('live-crop').hidden = !preferences.frame;
   voice.configure({ rate: preferences.voiceRate, volume: preferences.voiceVolume });
   $('mic-button').disabled = !speech.available;
-  const enabled = speech.handsFree && preferences.voiceEnabled;
-  if (voice.enabled !== enabled) setVoiceEnabled(enabled);
+  syncVoicePreference(preferences);
   cancelCapture();
 }
 
@@ -1237,8 +1255,7 @@ function showMicrophoneStatus({ handsFree, listening, message }) {
   mic.setAttribute('aria-label', micLabel);
   mic.title = micLabel;
   mic.setAttribute('aria-pressed', handsFree);
-  if (!handsFree && message) setVoiceEnabled(false);
-  const provider = $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
+  const provider = $('settings-asr-model').value === LOCAL_ASR_MODEL ? '本地' : $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
   const status = message || (handsFree ? (listening ? `${provider}正在听，可以说「拍摄」「停止」或「清空」。` : '正在开启麦克风…') : '');
   setText($('mic-status'), status);
   $('mic-status').hidden = !status;
@@ -1254,8 +1271,7 @@ function setupVoice() {
     speech.stop('当前浏览器不支持语音识别，可以使用文字输入。');
   }
   mic.addEventListener('click', () => {
-    const opening = !speech.handsFree;
-    setVoiceEnabled(opening && settings.preferences.voiceEnabled, !voice.available ? '当前浏览器不支持语音播报，可以查看文字提示。' : '');
+    syncVoicePreference();
     speech.toggleHandsFree();
   });
 }
@@ -1424,7 +1440,7 @@ document.addEventListener('keydown', event => {
   stopAll();
 });
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) return;
+  if (!document.hidden) { syncVoicePreference(); return; }
   if (state.device?.mode === 'SO101' && ['IDLE', 'MOVING'].includes(state.device.state) && !state.stopped) stopAll();
   cancelCapture();
   const hadHandsFree = speech.handsFree;

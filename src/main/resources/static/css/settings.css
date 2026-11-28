@@ -1,36 +1,36 @@
-.preferences-heading { margin-bottom: 28px; }
-.preferences-heading > div > p:last-child { color: #586b5e; margin-top: 12px; font-size: 16px; }
-.preferences-eyebrow { color: #64795c; font-size: 14px; margin-bottom: 10px; }
-.preferences-layout { display: grid; grid-template-columns: minmax(200px, .7fr) minmax(0, 2fr); gap: 38px; align-items: start; }
+.preferences-heading { margin-bottom: 18px; }
+.preferences-heading > div > p:last-child { color: #586b5e; margin-top: 12px; font-size: 14px; }
+.preferences-eyebrow { color: #64795c; font-size: 13px; margin-bottom: 10px; }
+.preferences-layout { display: grid; grid-template-columns: minmax(200px, .7fr) minmax(0, 2fr); gap: 24px; align-items: start; }
 .preferences-overview { position: sticky; top: 100px; padding: 22px 0; }
-.preferences-overview h2 { font-size: 20px; margin-bottom: 13px; }
-.preferences-overview > p { color: #586b5e; font-size: 16px; line-height: 1.7; }
+.preferences-overview h2 { font-size: 17px; margin-bottom: 13px; }
+.preferences-overview > p { color: #586b5e; font-size: 14px; line-height: 1.55; }
 .connection-reading { margin: 25px 0; padding: 18px; border: 1px solid #d6e1ce; border-radius: 12px; background: #edf3e7; overflow-wrap: anywhere; }
-.connection-reading > span { display: inline-block; font-size: 14px; font-weight: 650; color: #586b5e; }
+.connection-reading > span { display: inline-block; font-size: 13px; font-weight: 650; color: #586b5e; }
 .connection-reading > span[data-connected="true"] { color: #275334; }
-.connection-reading p { margin-top: 8px; font-size: 14px; line-height: 1.65; }
-.preferences-sections { display: grid; gap: 20px; min-width: 0; }
-.preferences-card { background: #fff; border: 1px solid #dfe5d8; border-radius: 16px; padding: 26px; min-width: 0; }
-.preferences-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
-.preferences-card-heading h2 { font-size: 20px; }
-.preferences-card-heading p { margin-top: 8px; color: #586b5e; font-size: 14px; line-height: 1.7; }
+.connection-reading p { margin-top: 8px; font-size: 13px; line-height: 1.65; }
+.preferences-sections { display: grid; gap: 14px; min-width: 0; }
+.preferences-card { background: #fff; border: 1px solid #dfe5d8; border-radius: 16px; padding: 18px; min-width: 0; }
+.preferences-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.preferences-card-heading h2 { font-size: 17px; }
+.preferences-card-heading p { margin-top: 8px; color: #586b5e; font-size: 13px; line-height: 1.55; }
 .preferences-tag { padding: 5px 9px; border-radius: 6px; background: #eef2e7; color: #586d4c; font-size: 13px; white-space: nowrap; }
-.preferences-field { display: grid; gap: 8px; min-width: 0; margin-bottom: 18px; }
-.preferences-field label { font-size: 14px; font-weight: 600; }
+.preferences-field { display: grid; gap: 8px; min-width: 0; margin-bottom: 12px; }
+.preferences-field label { font-size: 13px; font-weight: 600; }
 .preferences-field input[readonly] { background-color: #eef3e8; color: #42573e; }
-#speech-config-form { padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid #dfe5d8; }
-.preferences-field :is(input:not([type="range"]), select) { display: block; width: 100%; min-width: 0; border: 1px solid #ccd8c6; border-radius: 8px; background-color: #fbfcf9; color: #283d34; padding: 11px 12px; font-size: 16px; }
+#speech-config-form { padding-bottom: 22px; margin-bottom: 14px; border-bottom: 1px solid #dfe5d8; }
+.preferences-field :is(input:not([type="range"]), select) { display: block; width: 100%; min-width: 0; border: 1px solid #ccd8c6; border-radius: 8px; background-color: #fbfcf9; color: #283d34; padding: 9px 10px; font-size: 14px; }
 .preferences-field select { appearance: none; padding-right: 36px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23586b5e' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
-.preferences-field p, .preferences-caption { color: #586b5e; font-size: 14px; line-height: 1.7; }
-.preferences-overview > .preferences-caption { font-size: 14px; }
-.preferences-overview .text-button { margin: 16px 0 9px; padding: 0; font-size: 14px; }
-.preferences-notice { padding: 12px 14px; margin: 4px 0 18px; border-radius: 8px; background: #f3f6ef; color: #586b5e; line-height: 1.7; font-size: 14px; }
-.preferences-feedback { color: #365a40; line-height: 1.7; font-size: 14px; margin-top: 14px; overflow-wrap: anywhere; }
+.preferences-field p, .preferences-caption { color: #586b5e; font-size: 13px; line-height: 1.55; }
+.preferences-overview > .preferences-caption { font-size: 13px; }
+.preferences-overview .text-button { margin: 16px 0 9px; padding: 0; font-size: 13px; }
+.preferences-notice { padding: 12px 14px; margin: 4px 0 18px; border-radius: 8px; background: #f3f6ef; color: #586b5e; line-height: 1.55; font-size: 13px; }
+.preferences-feedback { color: #365a40; line-height: 1.55; font-size: 13px; margin-top: 14px; overflow-wrap: anywhere; }
 .preferences-feedback:empty { display: none; }
-.preferences-card .ai-actions button { font-size: 14px; }
-.preference-switch { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 0 0 18px; margin-bottom: 18px; border-bottom: 1px solid #edf0e8; cursor: pointer; }
-.preference-switch strong { font-weight: 600; font-size: 16px; }
-.preference-switch small { display: block; font-size: 14px; line-height: 1.7; color: #586b5e; margin-top: 5px; }
+.preferences-card .ai-actions button { font-size: 13px; }
+.preference-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 0 0 18px; margin-bottom: 12px; border-bottom: 1px solid #edf0e8; cursor: pointer; }
+.preference-switch strong { font-weight: 600; font-size: 14px; }
+.preference-switch small { display: block; font-size: 13px; line-height: 1.55; color: #586b5e; margin-top: 5px; }
 .preference-switch input { appearance: none; position: relative; width: 42px; height: 24px; border: 1px solid #bdcbb5; border-radius: 20px; background: #dfe5da; flex-shrink: 0; cursor: pointer; }
 .preference-switch input::after { content: ''; display: block; width: 16px; height: 16px; margin: 3px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #263e3433; transition: transform .15s; }
 .preference-switch input:checked { background: #39573d; border-color: #39573d; }
@@ -40,9 +40,9 @@
 .preferences-field input[type="range"] { width: 100%; min-width: 0; accent-color: #39573d; margin: 8px 0; }
 .preferences-field output { float: right; color: #64795c; font-weight: 400; }
 .preferences-inline { display: flex; align-items: center; gap: 15px; }
-.preferences-inline button, #settings-refresh { font-size: 14px; flex-shrink: 0; }
+.preferences-inline button, #settings-refresh { font-size: 13px; flex-shrink: 0; }
 .countdown-preference { max-width: 290px; margin-bottom: 0; }
-.preferences-status-list { margin: 0 0 18px; font-size: 14px; }
+.preferences-status-list { margin: 0 0 18px; font-size: 13px; }
 .preferences-status-list > div { display: grid; grid-template-columns: 135px minmax(0, 1fr); gap: 15px; padding: 12px 0; border-bottom: 1px solid #edf0e8; }
 .preferences-status-list dt { color: #586b5e; }
 .preferences-status-list dd { margin: 0; overflow-wrap: anywhere; }
@@ -59,6 +59,19 @@
   .preferences-fields-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .preferences-inline { align-items: flex-start; flex-direction: column; }
   .preferences-status-list > div { grid-template-columns: minmax(0, 1fr); gap: 7px; }
-  .preferences-heading > div > p:last-child { font-size: 14px; }
+  .preferences-heading > div > p:last-child { font-size: 13px; }
   .site-nav a { padding-inline: 12px; }
+}
+
+/* 设置页紧凑布局，不影响拍摄工作台。 */
+#settings-title { font-size: 28px; }
+#settings .flow-button, #settings button { font-size: 13px; }
+.preferences-advanced { margin-bottom: 14px; border-bottom: 1px solid #edf0e8; padding-bottom: 10px; }
+.preferences-advanced > summary { cursor: pointer; color: #506448; font-size: 13px; padding-block: 6px; }
+.preferences-advanced[open] > summary { margin-bottom: 10px; }
+.preferences-advanced .preferences-field:last-child { margin-bottom: 0; }
+@media (max-width: 520px) {
+  #settings-title { font-size: 24px; }
+  .preferences-card { padding: 16px 14px; }
+  .preferences-card-heading h2 { font-size: 16px; }
 }

@@ -19,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class So101DeviceGateway implements DeviceGateway {
     private final RestClient arm;
 
-    public So101DeviceGateway(@Value("${lensmind.so101.bridge-port:8766}") int port,
+    public So101DeviceGateway(@Value("${lensmind.so101.bridge-port:8767}") int port,
                               @Value("${lensmind.so101.token:}") String token) {
         if (token.isBlank()) throw new IllegalArgumentException("SO-101 bridge token is required");
         var requests = new JdkClientHttpRequestFactory(HttpClient.newBuilder()
