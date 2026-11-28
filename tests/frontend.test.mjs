@@ -1,13 +1,14 @@
 // 可选开发检查：Node.js 20+，无第三方依赖，不参与页面运行。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSpokenShutter, parseCommand } from '../src/main/resources/static/js/commands.js';
+import { isSpokenShutter, parseCommand, spokenYawDirection } from '../src/main/resources/static/js/commands.js';
 import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resources/static/js/crop.js';
 import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
 import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 import { DEFAULT_PREFERENCES, normalizePreferences, readPreferences, savePreferences } from '../src/main/resources/static/js/settings.js';
 import { FIXED_MODELS, LLM_PROFILES, SPEECH_PROFILES, isCloudAsr, isCloudTts } from '../src/main/resources/static/js/model-presets.js';
 import { createUtteranceBuffer, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
+import { openWristCamera } from '../src/main/resources/static/js/wrist-camera.js';
 
 test('固定模型预设和旧配置迁移保留正确服务商，不接受未知语音模型', () => {
   assert.equal(LLM_PROFILES.recommended.model, 'qwen3.5-flash-2026-02-23');
@@ -121,6 +122,30 @@ test('损坏或不可访问的设置存储不阻止启动，参数使用有效�
   assert.deepEqual(value, { ...DEFAULT_PREFERENCES, voiceEnabled: false, voiceVolume: 0 });
   assert.equal(normalizePreferences({ voiceVolume: NaN }).voiceVolume, 1);
   assert.equal(normalizePreferences({ modelBaseUrl: 'https://api.uniapi.io/v1/' }).modelBaseUrl, 'https://api.uniapi.io/v1');
+});
+
+test('实机语音只识别直接的单步转向口令', () => {
+  assert.equal(spokenYawDirection('相机向左转一点。'), 'LEFT');
+  assert.equal(spokenYawDirection('请镜头往右微转一下！'), 'RIGHT');
+  for (const phrase of ['不要向左转', '如果相机向左转一点', '相机向左转一点然后向右转', '相机向右转一点？', '相机往前']) {
+    assert.equal(spokenYawDirection(phrase), null);
+  }
+});
+
+test('腕部取景使用指定 USB 设备，缺失时不改用内置摄像头', async () => {
+  const streams = [];
+  const cameras = [
+    { kind: 'videoinput', deviceId: 'integrated', label: 'Integrated Webcam' },
+    { kind: 'videoinput', deviceId: 'wrist', label: 'USB CAMERA (10bb:2b08)' },
+  ];
+  const devices = {
+    enumerateDevices: async () => cameras,
+    getUserMedia: async options => { streams.push(options); return 'wrist-stream'; },
+  };
+  assert.equal(await openWristCamera(devices, 'USB CAMERA'), 'wrist-stream');
+  assert.deepEqual(streams[0].video.deviceId, { exact: 'wrist' });
+  await assert.rejects(openWristCamera(devices, 'Missing camera'), /找不到腕部摄像头/);
+  assert.equal(streams.length, 1);
 });
 
 test('描述要拍的照片时，明确的画幅和四格区域从文字或语音转写直接设置', () => {
