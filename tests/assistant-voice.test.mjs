@@ -13,6 +13,8 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     add(node) { this.options.push(node); }
     append(...nodes) { this.children.push(...nodes); }
     prepend(node) { this.children.unshift(node); }
+    insertBefore(node, before) { node.parentElement = this; this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); }
+    remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(node => node !== this); }
     replaceChildren(...nodes) { this.children = nodes; this.options = nodes; }
     get firstElementChild() { return this.children[0] ??= new Element(); }
     setAttribute(name, value) { this.attributes.set(name, String(value)); }
@@ -22,7 +24,9 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     toggleAttribute(name, on) { if (on) this.setAttribute(name, ''); else this.removeAttribute(name); }
     querySelectorAll() { return []; }
     close() {} focus() {}
-    getContext() { return { clearRect() {}, drawImage() {} }; }
+    getContext() { return { canvas: this, clearRect() {}, fillRect() {}, drawImage() {} }; }
+    toDataURL() { return 'data:image/jpeg;base64,TEST'; }
+    async play() { this.readyState = 2; this.videoWidth = 1280; this.videoHeight = 720; }
   }
   const html = await readFile(new URL('../src/main/resources/static/index.html', import.meta.url), 'utf8');
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
@@ -33,24 +37,26 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
   });
   const win = Object.assign(new EventTarget(), { scrollTo() {} });
   const saved = new Map();
-  for (const name of ['document', 'window', 'location', 'Image', 'Option', 'Audio', 'fetch', 'setInterval', 'setTimeout', 'cancelAnimationFrame']) {
+  for (const name of ['document', 'window', 'location', 'Image', 'Option', 'Audio', 'fetch', 'setInterval', 'setTimeout', 'cancelAnimationFrame', 'requestAnimationFrame', 'navigator']) {
     saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
   }
+  const track = Object.assign(new EventTarget(), { stop() {} });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) } } });
   const originalTimeout = globalThis.setTimeout;
-  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0;
+  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0, deviceState = 'IDLE';
   const ttsTexts = [];
   const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   Object.assign(globalThis, {
     document: doc, window: win, location: { hash: '#studio' },
     Image: class {}, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     Audio: class { constructor() { lastAudio = this; } pause() {} async play() { played++; } },
-    setInterval: () => 0, cancelAnimationFrame() {},
+    setInterval: () => 0, cancelAnimationFrame() {}, requestAnimationFrame: () => 0,
     setTimeout: (...args) => { const timer = originalTimeout(...args); timer.unref(); return timer; },
     fetch: async (path, options = {}) => {
       if (path === '/api/ai/session') return response({ connected: true, id: 'llm', model: 'qwen3.5-27b', host: 'example.test', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/device/calibration') return response({ required: false, ready: true });
-      if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: 'IDLE', x: 0, y: 0 });
+      if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: deviceState, x: 0, y: 0 });
       if (path === '/api/device/move') { movementRequests++; return response({ connected: true, mode: 'MOCK', state: 'IDLE' }); }
       if (path === '/api/ai/analyze') {
         const motion = JSON.parse(options.body).prompt === '相机向左一点';
@@ -106,10 +112,23 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     assert.equal(get('ai-plan-json').textContent.includes('feedback'), false, '控制 JSON 不混入播报文本');
     assert.equal(ttsTexts.at(-1), '已生成向左微调计划，等待控制端执行。');
     assert.equal(get('ai-plan-download').href, '/api/ai/control-plans/test');
+    get('settings-delay').value = '0';
+    get('settings-delay').dispatchEvent(new Event('change'));
+    assert.equal(get('capture-button').disabled, false, `人物检测加载时快门可用：${get('capture-hint').textContent} / ${get('camera-status').textContent}`);
+    await ask('给我动作建议');
+    assert.equal(get('guide-done').hidden, false);
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '01', '指导未完成且没有人物检测结果时，说拍摄也应成片');
+    assert.equal(get('guide-done').hidden, true, '拍摄会结束当前动作指导');
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '02', '无需等人物完整入镜即可继续拍摄');
+    deviceState = 'MOVING';
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '02', '控制端运动状态仍应拦截');
     globalThis.location.hash = '#gallery';
     win.dispatchEvent(new Event('hashchange'));
     await ask();
-    assert.equal(attempts, 5, '离开拍摄页不发起新播报');
+    assert.equal(attempts, 6, '离开拍摄页不发起新播报');
   } finally {
     win.dispatchEvent(new Event('pagehide'));
     await settle();

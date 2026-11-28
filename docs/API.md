@@ -318,3 +318,5 @@ ASR 接收 16kHz、16bit、小端单声道 PCM WAV，0.1～15 秒，上传不超
 `GET /api/ai/control-plans/{planId}` 下载 UTF-8 JSON，响应为 `application/json`、`Content-Disposition: attachment`、`Cache-Control: no-store`。仅原浏览器会话可下载且仅允许本机来源，未知或其他会话的计划返回 404，外部来源 403。文件持久化目录默认 `data/control-plans`，可用 `lensmind.ai.control-plan-dir` 修改。路径与文件名由后端生成，不接受模型指定路径。写入失败返回 500，模型格式或动作参数无效返回 502。
 
 `actions` 只允许 0～1 个 MOVE，`direction` 为 LEFT/RIGHT/UP/DOWN/FORWARD/BACKWARD/PITCH_UP/PITCH_DOWN，`step` 必须是整数 1。未明确要求调整相机/机位/机械臂，或者否定、提问、数字裁剪时，后端将动作清空并生成 NO_ACTION 文件。旧模型响应缺少 feedback/actions 时兼容回退为 summary 和空动作。摄影接口不执行这些计划，不访问 DeviceGateway；停止与拍照仍由原入口处理。
+
+2026-11-28 快门规则更新：页面按钮和「拍摄」口令不再依赖人物检测、完整入镜、画面占比、构图目标或人物站稳；当前指导可由拍摄直接结束。仍要求相机有可用画面、设备连接/IDLE、校准就绪、无停止锁定及未超照片上限；保留用户所选倒计时，控制端状态变化仍会取消。构图分析只提供建议，不阻拦拍摄。

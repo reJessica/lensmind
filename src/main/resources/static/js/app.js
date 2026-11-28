@@ -214,15 +214,15 @@ function updateDevice(device) {
 function updateAvailability() {
   renderStopButtons();
   settings.updateDevice(state.device, state.online);
-  const blocked = state.page !== 'studio' || !state.online || Boolean(state.stopped || state.stopPhase || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending);
-  const positionHint = state.capturePending ? '' : currentPositionHint();
+  const captureBlocked = state.page !== 'studio' || !state.online || Boolean(state.stopped || state.stopPhase || state.deviceAction || state.capturePending || state.cameraPending);
+  const blocked = captureBlocked || state.guidePending;
   document.querySelectorAll('[data-direction]').forEach(button => { button.disabled = blocked; });
   document.querySelectorAll('button[data-capture-mode]').forEach(button => { button.disabled = state.capturePending; });
   const calibrationHint = calibrationCaptureHint();
   const cameraUnavailable = !state.stream || video.readyState < 2;
   const cameraHint = cameraUnavailable ? '请等待摄像头就绪。' : '';
   const armHint = realCaptureHint();
-  $('capture-button').disabled = blocked || state.calibrationPending || Boolean(positionHint || calibrationHint || cameraHint || armHint);
+  $('capture-button').disabled = captureBlocked || state.calibrationPending || Boolean(calibrationHint || cameraHint || armHint);
   $('calibration-start').disabled = state.calibrationPending || state.capturePending;
   $('calibration-verify').disabled = state.calibrationPending || state.capturePending;
   $('neutral-position-confirm').disabled = state.calibrationPending || state.capturePending;
@@ -263,7 +263,7 @@ function updateAvailability() {
     : state.stopIssue ? `${state.stopIssue}。请检查控制服务，再点右上角的按钮重试。`
     : state.stopped ? (state.device?.mode === 'MOCK' ? '模拟机位已停止。点击「停止」可重新复位。' : '语音移动已锁定，可在「设置 → SO-101 机械臂」重新启用。')
     : !state.online ? '等控制服务连接后可拍摄。'
-    : calibrationHint || cameraHint || armHint || (state.guidePending ? '请先点击「已完成，继续」。' : positionHint);
+    : calibrationHint || cameraHint || armHint;
   setText($('capture-hint'), hint);
   $('capture-hint').classList.toggle('stop-hint', state.stopped || Boolean(state.stopPhase));
   $('capture-hint').hidden = !hint;
@@ -272,7 +272,6 @@ function updateAvailability() {
 function realCaptureHint(device = state.device) {
   if (device?.mode !== 'SO101') return '';
   if (device.state !== 'IDLE') return '请先在「设置 → SO-101 机械臂」启用实机语音控制，并等待机械臂停稳。';
-  if (!state.vision?.stable) return '请等取景画面中的人物站稳。';
   return '';
 }
 
@@ -591,6 +590,7 @@ function renderPeople() {
 }
 
 function showVisionReading(analysis) {
+  const previousStatus = state.vision?.status;
   state.vision = analysis;
   const labels = {
     loading: '正在加载人物检测', waiting: '等待新画面', empty: '未检测到人物',
@@ -858,13 +858,12 @@ async function home() {
 async function capture() {
   if (state.page !== 'studio') return;
   if (state.calibrationPending) return notify('请等待校准任务更新。', true);
-  if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending || !state.stream || video.readyState < 2) {
+  if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.cameraPending || !state.stream || video.readyState < 2) {
     notify('暂时无法拍摄，请检查控制服务或等待当前操作完成。', true);
     return;
   }
-  const positionHint = currentPositionHint();
-  if (positionHint) return notify(positionHint, true);
   if (state.photos.length >= 12) return notify('本次最多保留 12 张。请先下载，刷新页面后开启新一轮拍摄。');
+  clearGuide();
   voice.cancel();
   ai.cancel('已开始拍摄，可在下一次取景时重新分析。');
   state.stopResetConfirmed = false;
