@@ -55,3 +55,4 @@ __pycache__/
 /config/ai-local.properties
 /docs/model-test-results.local.json
 /docs/model-tts-preview.local.wav
+config/so101-calibration.local.json

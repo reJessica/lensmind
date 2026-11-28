@@ -49,6 +49,7 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     fetch: async (path, options = {}) => {
       if (path === '/api/ai/session') return response({ connected: true, id: 'llm', model: 'qwen3.5-27b', host: 'example.test', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
+      if (path === '/api/device/calibration') return response({ required: false, ready: true });
       if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: 'IDLE', x: 0, y: 0 });
       if (path === '/api/ai/analyze') return response({ summary: '可以使用柔和的侧光。', steps: [], observations: [], targets: [], settings: null });
       if (path === '/api/ai/speech/tts') {
