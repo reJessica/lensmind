@@ -3,17 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#253b33">
+  <meta name="theme-color" content="#242c23">
   <title>灵眸 LensMind · 摄影工作台</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg?v=2">
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/settings.css">
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/home.css">
   <script type="module" src="/js/app.js"></script>
+  <script type="module" src="/js/home-carousel.js"></script>
 </head>
 <body>
   <header class="site-header">
     <div class="site-header-inner">
-      <a class="site-brand" href="#home" aria-label="灵眸首页"><img src="/assets/logo.svg" alt=""><span>灵眸 <small>LensMind</small></span></a>
+      <a class="site-brand" href="#home" aria-label="灵眸首页"><span class="site-mark" aria-hidden="true"></span><span>灵眸 <small>LensMind</small></span></a>
       <nav class="site-nav" aria-label="工作台导航">
         <a data-nav="home" href="#home" aria-current="page">首页</a>
         <a data-nav="studio" href="#studio">拍摄</a>
@@ -29,23 +32,29 @@
 
   <main class="workflow-shell">
     <section id="home" data-page aria-labelledby="home-title">
-      <div class="home-hero">
-        <div class="home-intro">
-          <h1 id="home-title" tabindex="-1">从取景到成片</h1>
-          <p>用电脑摄像头取景，调整画幅和构图，拍完再挑选、裁剪和下载。</p>
-          <a class="flow-button flow-primary" href="#studio">开始拍摄 <span aria-hidden="true">→</span></a>
-          <small>可以先用演示画面熟悉操作。</small>
+      <h1 id="home-title" tabindex="-1"><span>Lens</span><span>Mind</span></h1>
+      <div class="home-carousel" id="home-carousel" data-tone="orange" role="group" aria-roledescription="轮播" aria-label="卡通人物取景框">
+        <div class="home-carousel-stage">
+          <button class="home-shot" type="button" data-tone="orange" data-person="橙色人物" data-position="active" aria-label="当前是橙色人物，点按切换下一位">
+            <img src="/assets/home-figurine-1.png" width="960" height="1280" alt="" draggable="false" fetchpriority="high">
+            <span class="home-frame" aria-hidden="true"></span>
+          </button>
+          <button class="home-shot" type="button" data-tone="green" data-person="绿色人物" data-position="next" aria-label="切换到绿色人物">
+            <img src="/assets/home-figurine-2.png" width="960" height="1280" alt="" draggable="false">
+            <span class="home-frame" aria-hidden="true"></span>
+          </button>
+          <button class="home-shot" type="button" data-tone="pink" data-person="粉色人物" data-position="back" tabindex="-1" inert aria-hidden="true" aria-label="切换到粉色人物">
+            <img src="/assets/home-figurine-3.png" width="960" height="1280" alt="" draggable="false">
+            <span class="home-frame" aria-hidden="true"></span>
+          </button>
+          <button class="home-shot" type="button" data-tone="blue" data-person="蓝色人物" data-position="previous" aria-label="切换到蓝色人物">
+            <img src="/assets/home-figurine-4.png" width="960" height="1280" alt="" draggable="false">
+            <span class="home-frame" aria-hidden="true"></span>
+          </button>
         </div>
-        <figure class="home-image">
-          <img src="/assets/demo-scene.svg" alt="演示取景中的人像插画">
-          <figcaption>演示取景</figcaption>
-        </figure>
+        <a class="home-start" href="#studio"><span class="home-shutter" aria-hidden="true"></span>开始拍摄</a>
+        <p class="sr-only" id="home-carousel-status" role="status">橙色人物，第 1 位，共 4 位</p>
       </div>
-      <ol class="home-steps" aria-label="拍摄流程">
-        <li><span>1</span><div><h2>取景</h2><p>开启摄像头，或先使用演示画面。</p></div></li>
-        <li><span>2</span><div><h2>构图与拍摄</h2><p>使用构图辅助，或切到手动拍摄并自己决定何时按快门。</p></div></li>
-        <li><span>3</span><div><h2>选片与下载</h2><p>点「完成拍摄」，查看成片并下载。</p></div></li>
-      </ol>
     </section>
 
     <section id="studio" data-page data-capture-mode="assisted" aria-labelledby="studio-title" hidden>
@@ -53,29 +62,33 @@
         <div><h1 id="studio-title" tabindex="-1">取景与拍摄</h1><div class="service-reading"><span class="status-dot" id="service-dot"></span><span id="service-status">正在连接服务</span></div></div>
         <a class="flow-button flow-finish" id="finish-shooting" href="#gallery">完成拍摄 <span aria-hidden="true">→</span></a>
       </header>
-      <div class="shoot-toolbar">
-        <div class="shoot-source">
-          <h2>取景来源</h2>
-          <button id="camera-button" type="button">开启电脑摄像头</button>
-          <p id="shoot-source-copy">当前使用演示画面。</p>
+      <section class="capture-mode-picker" aria-labelledby="capture-mode-title">
+        <h2 id="capture-mode-title">选择拍摄模式</h2>
+        <div class="shoot-mode-options" role="group" aria-labelledby="capture-mode-title">
+          <button type="button" class="capture-mode-card" data-capture-mode="assisted" aria-pressed="true" aria-labelledby="assisted-mode-title" aria-describedby="assisted-mode-description">
+            <span class="capture-mode-icon" aria-hidden="true"></span>
+            <span class="capture-mode-label"><strong id="assisted-mode-title">构图辅助</strong><span id="assisted-mode-description">跟随画面提示站位，构图与景别达标后再拍。</span></span>
+            <span class="capture-mode-check" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="capture-mode-card" data-capture-mode="manual" aria-pressed="false" aria-labelledby="manual-mode-title" aria-describedby="manual-mode-description">
+            <span class="capture-mode-icon" aria-hidden="true"></span>
+            <span class="capture-mode-label"><strong id="manual-mode-title">手动拍摄</strong><span id="manual-mode-description">自己决定构图和快门时机，选了景别时仍会检查。</span></span>
+            <span class="capture-mode-check" aria-hidden="true"></span>
+          </button>
         </div>
-        <div class="shoot-mode">
-          <h2>拍摄模式</h2>
-          <div class="shoot-mode-options" role="group" aria-label="拍摄模式">
-            <button type="button" data-capture-mode="assisted" aria-pressed="true">构图辅助</button>
-            <button type="button" data-capture-mode="manual" aria-pressed="false">手动拍摄</button>
-          </div>
-          <p id="shoot-mode-copy" role="status">摄像头取景时，人物位置和所选景别都达标后可以拍摄。</p>
-        </div>
-      </div>
+      </section>
 
       <div class="studio-grid">
         <section class="preview-panel panel" aria-label="实时取景">
           <div class="panel-title"><h2><span class="status-dot"></span> 实时取景</h2><a class="preview-settings-link" href="#settings">显示设置</a></div>
-          <div class="viewfinder" id="viewfinder">
-            <canvas id="preview" width="1200" height="800" aria-label="模拟场景取景画布"></canvas>
+          <div class="viewfinder" id="viewfinder" data-camera-waiting>
+            <div class="camera-placeholder" id="camera-placeholder">
+              <p id="camera-status" role="status">正在开启摄像头…</p>
+              <button class="flow-button flow-primary" id="camera-retry" type="button" hidden>重试摄像头</button>
+            </div>
+            <canvas id="preview" width="1200" height="800" aria-label="电脑摄像头取景画布"></canvas>
             <video id="camera-video" playsinline muted hidden></video>
-            <div class="preview-top"><span id="source-label">◉ 模拟场景 · 非实时摄像头</span><span>未镜像</span></div>
+            <div class="preview-top"><span id="source-label">◉ 电脑摄像头</span><span>未镜像</span></div>
             <div class="thirds-grid" id="thirds-grid" aria-hidden="true"></div>
             <div class="crop-frame" id="live-crop" role="group" aria-label="数字裁剪框，拖动框内移动，拖动四角缩放">
               <span>数字裁剪 · <b id="crop-zoom">1.15×</b></span>
@@ -120,84 +133,97 @@
           </section>
         </section>
 
-        <aside class="settings-panel panel" aria-label="拍摄设置">
-          <div class="panel-title"><h2>快门与画幅</h2></div>
-          <div class="settings-content">
-            <div class="shutter-controls">
-              <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
-              <button id="capture-button" type="button" class="capture-button"><span aria-hidden="true">◉</span> 拍一张照片</button>
-              <p class="subtle-note capture-hint" id="capture-hint" role="status" hidden></p>
-              <p class="shot-count" id="shot-count" aria-live="polite">本次已拍 0 张</p>
-            </div>
-            <section class="setting-group"><div class="setting-title"><h3>画幅比例</h3><span>拖框移动 · 拖角缩放</span></div><div class="ratio-options" id="ratio-options"><button data-ratio="original">原比例</button><button data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4" class="selected">3:4</button><button data-ratio="16:9">16:9</button><button data-ratio="9:16">9:16</button></div></section>
-            <section class="setting-group"><div class="setting-title"><h3>构图方式</h3><span>数字裁剪</span></div><div class="segmented" id="composition-options"><button data-composition="center" class="selected" aria-pressed="true">居中</button><button data-composition="left" aria-pressed="false">左三分</button><button data-composition="right" aria-pressed="false">右三分</button></div><div class="segmented compact" id="framing-options" role="group" aria-label="景别"><button data-framing="any" class="selected" aria-pressed="true">不限景别</button><button data-framing="half" aria-pressed="false">半身</button><button data-framing="full" aria-pressed="false">全身</button></div></section>
-            <details class="settings-disclosure" id="device-tools">
-              <summary>模拟机位</summary>
-              <div class="movement-layout">
-                <div class="direction-pad">
-                  <button id="move-top" data-direction="UP" aria-label="相机向上">↑</button>
-                  <button data-direction="LEFT" aria-label="相机向左">←</button>
-                  <button id="home-button" aria-label="回初始位" title="回初始位">⌂</button>
-                  <button data-direction="RIGHT" aria-label="相机向右">→</button>
-                  <button id="move-bottom" data-direction="DOWN" aria-label="相机向下">↓</button>
-                </div>
-                <div id="camera-adjustments" class="camera-adjustments" hidden>
-                  <div role="group" aria-label="镜头高度">
-                    <button data-direction="UP">上升</button><button data-direction="DOWN">下降</button>
-                  </div>
-                  <div role="group" aria-label="镜头俯仰">
-                    <button data-direction="PITCH_UP">抬头</button><button data-direction="PITCH_DOWN">低头</button>
-                  </div>
-                </div>
-                <div class="movement-note"><p>方向以取景画面为准。</p><span id="position-label" aria-live="polite">X 0 · Y 0</span></div>
-              </div>
-            </details>
-            <details class="settings-disclosure" id="so101-view" open hidden>
-              <summary>SO-101 机械臂外部视角</summary>
-              <img id="so101-arm-image" alt="SO-101 仿真机械臂外部视角" width="480" height="320">
-            </details>
-          </div>
-        </aside>
-
-        <section class="studio-tools panel" aria-labelledby="assistant-title">
-          <div class="assistant-heading">
-            <h2 id="assistant-title">摄影助手</h2>
-            <div class="assistant-actions">
+        <div class="studio-sidebar">
+          <section class="studio-tools panel" aria-labelledby="assistant-title">
+            <div class="assistant-heading">
+              <h2 id="assistant-title">摄影助手</h2>
               <a id="ai-open" class="flow-button" href="#settings">模型设置</a>
             </div>
-          </div>
-          <p class="assistant-status" id="ai-model-status">基础模式 · 语音和文字指令可用</p>
-          <p class="assistant-status" id="voice-status" role="status" hidden></p>
-          <p class="assistant-status" id="mic-status" role="status" hidden></p>
-          <div class="preview-caption" id="guide-panel" hidden><span id="guide-text" role="status"></span><button id="guide-done" class="text-button" hidden>已完成，继续 →</button></div>
-          <div class="voice-bar"><button class="mic-button" id="mic-button" type="button" title="开启语音" aria-label="开启语音" aria-pressed="false" aria-describedby="mic-status">🎙︎</button><form id="command-form"><label class="sr-only" for="command-input">语音指令或文字指令</label><input id="command-input" autocomplete="off" maxlength="500" placeholder="输入内容，或点麦克风开启语音"><button type="button" id="command-clear" class="command-clear" aria-label="清空输入" title="清空输入"><span aria-hidden="true">×</span></button><button type="submit" class="send-button" aria-label="发送指令">↑</button></form></div>
-          <div class="command-examples"><button type="button" data-command="让人物的头在右下角">头在右下角</button><button type="button" data-command="放大一点">放大一点</button><button type="button" data-command="给我动作建议">动作建议</button></div>
-          <details class="tool-disclosure" id="analysis-tools">
-            <summary>画面分析与参考图</summary>
-            <div class="ai-panel">
-              <div class="ai-reference">
-                <img id="ai-thumbnail" alt="模仿用参考图" hidden>
-                <div><label for="ai-reference-file">参考图（可选）</label><input id="ai-reference-file" type="file" accept="image/jpeg,image/png,image/webp"></div>
-                <button type="button" id="ai-remove-reference" class="text-button" hidden>移除参考图</button>
+            <p class="assistant-status" id="ai-model-status">基础模式 · 语音和文字指令可用</p>
+            <p class="assistant-status" id="voice-status" role="status" hidden></p>
+            <p class="assistant-status" id="mic-status" role="status" hidden></p>
+            <div class="preview-caption" id="guide-panel" hidden><span id="guide-text" role="status"></span><button id="guide-done" class="text-button" hidden>已完成，继续 →</button></div>
+            <div class="voice-bar"><button class="mic-button" id="mic-button" type="button" title="开启语音" aria-label="开启语音" aria-pressed="false" aria-describedby="mic-status">🎙︎</button><form id="command-form"><label class="sr-only" for="command-input">语音指令或文字指令</label><input id="command-input" autocomplete="off" maxlength="500" placeholder="输入内容，或点麦克风开启语音"><button type="button" id="command-clear" class="command-clear" aria-label="清空输入" title="清空输入"><span aria-hidden="true">×</span></button><button type="submit" class="send-button" aria-label="发送指令">↑</button></form></div>
+            <div class="command-examples"><button type="button" data-command="让人物的头在右下角">头在右下角</button><button type="button" data-command="放大一点">放大一点</button><button type="button" data-command="给我动作建议">动作建议</button></div>
+            <details class="analysis-section" id="analysis-tools">
+              <summary>
+                <span class="analysis-icon" aria-hidden="true"></span>
+                <span>画面分析与参考图</span>
+                <span class="analysis-chevron" aria-hidden="true"></span>
+              </summary>
+              <div class="analysis-body">
+                <div class="reference-card">
+                  <div class="reference-visual">
+                    <span class="reference-placeholder" aria-hidden="true"></span>
+                    <img id="ai-thumbnail" alt="参考图预览" hidden>
+                  </div>
+                  <div class="reference-content">
+                    <p class="reference-heading">参考图 <span>可选</span></p>
+                    <p class="reference-caption" id="reference-formats">JPG、PNG、WebP · 10 MB 以内</p>
+                    <p class="reference-filename" id="ai-reference-name" hidden></p>
+                    <div class="reference-controls">
+                      <input class="sr-only reference-file" id="ai-reference-file" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="reference-formats">
+                      <label class="reference-picker" for="ai-reference-file" id="ai-reference-action">选择参考图</label>
+                      <button type="button" id="ai-remove-reference" aria-label="移除参考图" hidden>移除</button>
+                    </div>
+                  </div>
+                </div>
+                <button id="ai-analyze" type="button" class="analysis-button">分析当前画面</button>
               </div>
-              <button id="ai-analyze" type="button" class="primary-button">分析当前画面</button>
+            </details>
+            <div class="assistant-reply">
+              <p id="ai-status" class="ai-note" role="status"></p>
+              <div id="ai-result" class="ai-result" hidden>
+                <p id="ai-summary" role="status"></p>
+                <ul id="ai-observations" aria-label="识别到的画面元素"></ul>
+                <div id="ai-targets" class="ai-targets" aria-label="建议构图区域"></div>
+                <ol id="ai-steps" aria-label="拍摄调整步骤"></ol>
+              </div>
             </div>
-          </details>
-          <div class="assistant-reply">
-            <p id="ai-status" class="ai-note" role="status"></p>
-            <div id="ai-result" class="ai-result" hidden>
-              <p id="ai-summary" role="status"></p>
-              <ul id="ai-observations" aria-label="识别到的画面元素"></ul>
-              <div id="ai-targets" class="ai-targets" aria-label="建议构图区域"></div>
-              <ol id="ai-steps" aria-label="拍摄调整步骤"></ol>
-            </div>
-          </div>
-          <p class="assistant-status assistant-privacy" id="assistant-privacy" hidden>连接后，发送的文字和语音转写由模型理解。看图请求会附上当前画幅和已选参考图。</p>
-        </section>
+            <p class="assistant-status assistant-privacy" id="assistant-privacy" hidden>连接后，发送的文字和语音转写由模型理解。看图请求会附上当前画幅和已选参考图。</p>
+          </section>
 
+          <aside class="settings-panel panel" aria-label="拍摄设置">
+            <div class="panel-title"><h2>快门与画幅</h2></div>
+            <div class="settings-content">
+              <div class="shutter-controls">
+                <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
+                <button id="capture-button" type="button" class="capture-button"><span aria-hidden="true">◉</span> 拍一张照片</button>
+                <p class="subtle-note capture-hint" id="capture-hint" role="status" hidden></p>
+                <p class="shot-count" id="shot-count" aria-live="polite">本次已拍 0 张</p>
+              </div>
+              <section class="setting-group"><div class="setting-title"><h3>画幅比例</h3><span>拖框移动 · 拖角缩放</span></div><div class="ratio-options" id="ratio-options"><button data-ratio="original">原比例</button><button data-ratio="1:1">1:1</button><button data-ratio="4:3">4:3</button><button data-ratio="3:4" class="selected">3:4</button><button data-ratio="16:9">16:9</button><button data-ratio="9:16">9:16</button></div></section>
+              <section class="setting-group"><div class="setting-title"><h3>构图方式</h3><span>数字裁剪</span></div><div class="segmented" id="composition-options"><button data-composition="center" class="selected" aria-pressed="true">居中</button><button data-composition="left" aria-pressed="false">左三分</button><button data-composition="right" aria-pressed="false">右三分</button></div><div class="segmented compact" id="framing-options" role="group" aria-label="景别"><button data-framing="any" class="selected" aria-pressed="true">不限景别</button><button data-framing="half" aria-pressed="false">半身</button><button data-framing="full" aria-pressed="false">全身</button></div></section>
+              <details class="settings-disclosure" id="device-tools">
+                <summary>模拟机位</summary>
+                <div class="movement-layout">
+                  <div class="direction-pad">
+                    <button id="move-top" data-direction="UP" aria-label="相机向上">↑</button>
+                    <button data-direction="LEFT" aria-label="相机向左">←</button>
+                    <button id="home-button" aria-label="回初始位" title="回初始位">⌂</button>
+                    <button data-direction="RIGHT" aria-label="相机向右">→</button>
+                    <button id="move-bottom" data-direction="DOWN" aria-label="相机向下">↓</button>
+                  </div>
+                  <div id="camera-adjustments" class="camera-adjustments" hidden>
+                    <div role="group" aria-label="镜头高度">
+                      <button data-direction="UP">上升</button><button data-direction="DOWN">下降</button>
+                    </div>
+                    <div role="group" aria-label="镜头俯仰">
+                      <button data-direction="PITCH_UP">抬头</button><button data-direction="PITCH_DOWN">低头</button>
+                    </div>
+                  </div>
+                  <div class="movement-note"><p>按键仅调整模拟机位。</p><span id="position-label" aria-live="polite">X 0 · Y 0</span></div>
+                </div>
+              </details>
+              <details class="settings-disclosure" id="so101-view" open hidden>
+                <summary>SO-101 仿真视角</summary>
+                <figure><figcaption>腕部相机</figcaption><img id="so101-wrist-image" alt="SO-101 仿真腕部相机画面" width="480" height="320" hidden></figure>
+                <figure><figcaption>机械臂外部视角</figcaption><img id="so101-arm-image" alt="SO-101 仿真机械臂外部视角" width="480" height="320" hidden></figure>
+              </details>
+            </div>
+          </aside>
+        </div>
       </div>
-
-      <details class="workflow-log"><summary>交互记录</summary><div class="activity-panel panel"><ol id="activity-log" aria-live="polite"></ol></div></details>
     </section>
 
     <section id="gallery" data-page aria-labelledby="gallery-title" hidden>
@@ -318,7 +344,7 @@
   <dialog id="help-dialog" class="help-dialog workflow-help" aria-labelledby="help-title">
     <div class="dialog-header"><h2 id="help-title">使用说明</h2><button id="help-stop" data-stop="ready" type="button" class="stop-button" hidden><span data-stop-icon aria-hidden="true">■</span> <span data-stop-label>停止</span></button><button type="button" id="close-help" class="icon-button" aria-label="关闭使用说明">×</button></div>
     <ol>
-      <li>点「开始拍摄」，在拍摄页开启电脑摄像头，或使用演示画面。</li>
+      <li>进入拍摄页即开启电脑摄像头。首次使用时，请在浏览器提示中允许访问。</li>
       <li>选「构图辅助」按提示调整位置，或选「手动拍摄」自己决定何时按快门。可以直接拖动裁剪框。</li>
       <li>在「摄影助手」点一次麦克风即可开启持续监听和播报。听到「可以拍了」后直接说「拍摄」，也可以说「已完成」结束动作指导，或说「停止」取消倒计时。</li>
       <li>在顶部「设置」连接视觉模型、调整播报和取景显示。离开拍摄页会关闭摄像头和麦克风并取消倒计时，已拍照片继续保留。</li>

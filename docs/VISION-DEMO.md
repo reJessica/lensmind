@@ -10,7 +10,7 @@
 
 macOS 或 Linux 使用 `./mvnw spring-boot:run`。模型来源、许可和校验方式见 [本地视觉模型](../models/README.md)。Windows 下可用 `.\scripts\setup-vision.ps1` 校验或补齐模型。自定义路径分别使用 `LENSMIND_VISION_MODEL`、`LENSMIND_FACE_MODEL` 和 `LENSMIND_POSE_MODEL`。
 
-打开 <http://127.0.0.1:8080/>，点「开始拍摄」。测试摄像头和麦克风时分别点击开启并批准权限。麦克风一次开启持续监听和播报。点「完成拍摄」关闭取景并进入选片页。
+打开 <http://127.0.0.1:8080/>，点「开始拍摄」直接开启电脑摄像头；出现提示时批准权限。测试麦克风时单独点击开启并批准权限。麦克风一次开启持续监听和播报。点「完成拍摄」关闭取景并进入选片页。
 
 ## 固定场景
 
