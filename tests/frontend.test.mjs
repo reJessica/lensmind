@@ -36,12 +36,15 @@ test('本地流式中间字只更新文本，最终句只执行一次，否定�
   assert.deepEqual(commands, ['CAPTURE', 'CLARIFY']);
 });
 
-test('新版可手选云端 ASR，旧默认迁移本地且不改变 TTS', () => {
+test('所有历史 ASR 偏好固定本地，TTS 保持原选择', () => {
   const old = normalizePreferences({ ...DEFAULT_PREFERENCES, speechDefaultsVersion: 4, asrModel: 'whisper-1' });
   assert.equal(old.asrModel, LOCAL_ASR_MODEL);
   assert.equal(old.ttsModel, DEFAULT_PREFERENCES.ttsModel);
   const manual = normalizePreferences({ ...DEFAULT_PREFERENCES, asrModel: 'whisper-1' });
-  assert.equal(manual.asrModel, 'whisper-1');
+  assert.equal(manual.asrModel, LOCAL_ASR_MODEL);
+  for (const version of [2, 3, 4, 5]) for (const model of ['browser', 'whisper-1', FIXED_MODELS.asr, 'unknown']) {
+    assert.equal(normalizePreferences({ ...DEFAULT_PREFERENCES, speechDefaultsVersion: version, asrModel: model }).asrModel, LOCAL_ASR_MODEL);
+  }
 });
 
 test('停止本地识别时未完成的连接返回后立即关闭，不开启录音或执行指令', async () => {
@@ -115,7 +118,7 @@ test('首次加载、旧浏览器默认值和恢复默认使用云端，后续�
   let saved;
   const storage = { setItem(key, value) { saved = value; }, getItem() { return saved; } };
   savePreferences(storage, { ...migrated, asrModel: 'browser', ttsModel: 'browser' });
-  assert.equal(readPreferences(storage).asrModel, 'browser');
+  assert.equal(readPreferences(storage).asrModel, LOCAL_ASR_MODEL);
   assert.equal(readPreferences(storage).ttsModel, 'browser');
   savePreferences(storage, { ...DEFAULT_PREFERENCES });
   assert.equal(readPreferences(storage).asrModel, LOCAL_ASR_MODEL);
@@ -127,7 +130,7 @@ test('语音默认迁移至 UniAPI，百炼仅在新版手选时保留，两套�
   assert.equal(old.voiceProvider, 'uniapi');
   assert.equal(old.asrModel, LOCAL_ASR_MODEL); assert.equal(old.ttsModel, SPEECH_PROFILES.uniapi.tts);
   const selected = normalizePreferences({ ...DEFAULT_PREFERENCES, voiceProvider: 'dashscope', asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts });
-  assert.equal(selected.voiceProvider, 'dashscope'); assert.equal(selected.asrModel, FIXED_MODELS.asr);
+  assert.equal(selected.voiceProvider, 'dashscope'); assert.equal(selected.asrModel, LOCAL_ASR_MODEL);
   for (const profile of Object.values(SPEECH_PROFILES)) { assert.equal(isCloudAsr(profile.asr), true); assert.equal(isCloudTts(profile.tts), true); }
   assert.equal(isCloudAsr('browser'), false); assert.equal(isCloudTts('unknown'), false);
 });
@@ -708,7 +711,7 @@ test('live speech guides the subject in the current frame and uses the same read
   assert.deepEqual(parseCommand('我已完成，继续。'), { type: 'GUIDE_DONE' });
 });
 
-test('half and full shots require actual pose in the crop even when a tracked head is on target', () => {
+test('半身和全身只是构图目标，缺少腰胯或脚部关键点不拦截拍摄和强制播报', () => {
   const now = 7300;
   const box = { x: .32, y: .08, width: .36, height: .92 };
   const face = { x: .46, y: .12, width: .08, height: .08 };
@@ -722,14 +725,15 @@ test('half and full shots require actual pose in the crop even when a tracked he
     { x: 0, y: 0, width: 1, height: 1 });
   const goals = new Map();
   const options = { headTarget: { cells: [1], part: 'head' }, framing: 'half', now };
-  assert.match(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, options), /腰胯/);
-  assert.match(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, options), /腰胯/);
-  assert.match(capturePositionHint(frame({ ...halfPose, nose: point(.5, .73) }), 'center', goals, options), /腰胯/);
+  assert.equal(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, options), '');
+  assert.equal(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, options), '构图已到位，可以拍了。');
+  assert.equal(capturePositionHint(frame({ ...halfPose, nose: point(.5, .73) }), 'center', goals, options), '');
   assert.equal(capturePositionHint(frame(halfPose), 'center', goals, options), '');
-  assert.match(capturePositionHint(frame(fullPose), 'center', goals, options), /下边缘/);
-  assert.match(capturePositionHint(frame(halfPose), 'center', goals, { ...options, framing: 'full', skipPosition: true }), /双脚/);
+  assert.equal(capturePositionHint(frame(fullPose), 'center', goals, options), '');
+  assert.equal(capturePositionHint(frame(halfPose), 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
   assert.equal(capturePositionHint(frame(fullPose), 'center', goals, { ...options, framing: 'full' }), '');
   assert.equal(capturePositionHint(frame({}), 'center', goals, { ...options, framing: 'any' }), '');
+  assert.equal(capturePositionHint({ status: 'error' }, 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
 });
 
 test('voice feedback waits for a consistent cue, deduplicates it and cancels when stopped', () => {

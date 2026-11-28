@@ -95,7 +95,8 @@ export function setupAi(getScene, onAdvice) {
     connection = result.connected ? result : null;
     clearTimeout(expiryTimer);
     $('ai-disconnect').hidden = !connection;
-    $('ai-model-status').textContent = connection ? `模型已连接 · ${connection.model}（${connection.host}）` : '基础模式 · 语音和文字指令可用';
+    $('ai-model-status').textContent = connection ? `模型已连接 · ${connection.model}（${connection.host}）` : '';
+    $('ai-model-status').hidden = !connection;
     $('settings-model-status').textContent = connection ? `${connection.model} · ${connection.host}` : '基础指令仍可使用。';
     $('settings-connection-badge').textContent = connection ? '已连接' : '未连接';
     $('settings-connection-badge').dataset.connected = String(Boolean(connection));

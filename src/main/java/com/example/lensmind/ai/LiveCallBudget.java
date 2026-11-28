@@ -23,7 +23,9 @@ public class LiveCallBudget {
             while (true) {
                 int current = attempts.get();
                 if (current >= limit()) {
-                    throw new AiException(HttpStatus.TOO_MANY_REQUESTS, "LIVE_CALL_LIMIT", "已达到本次进程的真实调用上限，请先检查用量与预算");
+                    throw new AiException(HttpStatus.TOO_MANY_REQUESTS, "LIVE_CALL_LIMIT",
+                            "本机调用次数已达上限（" + current + "/" + limit()
+                            + "），不是供应商余额提示。可调整 LENSMIND_MAX_LIVE_CALLS 后重启后端。");
                 }
                 if (attempts.compareAndSet(current, current + 1)) break;
             }

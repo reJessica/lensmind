@@ -132,7 +132,7 @@ python3 scripts/smoke_ai.py --base-url http://127.0.0.1:8080 --live --speech-onl
 
 `--speech` 在完整测试后增加 TTS 与 ASR，`--speech-only` 则跳过文字/图片模型。TTS 失败时不会继续调用 ASR，也不自动重试。脚本会写被 Git 忽略的 `docs/model-test-results.local.json`；成功的真实 TTS 预览保存到同样被忽略的 `docs/model-tts-preview.local.wav`，不记录密钥。
 
-默认每进程最多尝试 8 次真实调用、并发 2、超时 60 秒，不自动重试；进程重启会重置计数，不等于人民币预算。修改模型/提示词后先用少量固定样例评估，再扩大测试。
+默认每进程最多尝试 50 次真实调用、并发 2、超时 60 秒，不自动重试；进程重启会重置计数，不等于人民币预算。LLM 回答与云端 TTS 各计一次，本地 ASR 不计数。可用环境变量 `LENSMIND_MAX_LIVE_CALLS` 或本机 `lensmind.ai.max-live-calls` 调整上限，修改后重启生效。修改模型/提示词后先用少量固定样例评估，再扩大测试。
 
 测试图片及许可见 [samples/ATTRIBUTION.md](samples/ATTRIBUTION.md)。它仅验证单张头肩照的分析接口，后续还需要全身、无人物、遮挡、多人、低光等测试样例，以及连续帧稳定性模块。
 

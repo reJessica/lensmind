@@ -2,7 +2,7 @@
 
 更新人：ya.liu（AI 辅助：Codex） · 2026-11-28
 
-默认模型：`sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`，CPU 推理，16kHz 单声道。LLM 仍使用汇云 Qwen，TTS 仍使用 UniAPI Gemini，云端服务的限流不会因切换 ASR 自动消失。
+固定模型：`sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30`，CPU 推理，16kHz 单声道。LLM 仍使用汇云 Qwen，TTS 仍使用 UniAPI Gemini，云端服务的限流不会因切换 ASR 自动消失。
 
 ## 组员首次启动
 
@@ -37,7 +37,7 @@ py -3.12 -m venv .venv-asr
 
 看到 `local streaming ASR ready` 后，另一个终端启动 Spring Boot：`./mvnw spring-boot:run`（Windows：`.\mvnw.cmd spring-boot:run`）。ASR 默认监听本机 8766；可同时修改 Python `--port` 和 Spring `--lensmind.local-asr.port`。不要启动第二份占用相同端口的服务。
 
-设置页 ASR 选择「本地 Zipformer」，点击检查本地 ASR 服务。回到拍摄页开启麦克风。只使用本地 ASR 不需要 API Key；云端 TTS 仍需单独保存语音配置。麦克风来源可在设置页选择，不显示音量检测界面。
+设置页 ASR 固定为「本地 Zipformer」，不可切换；点击检查本地 ASR 服务。回到拍摄页开启麦克风。只使用本地 ASR 不需要 API Key；云端 TTS 仍需单独保存语音配置。麦克风来源可在设置页选择，不显示音量检测界面。
 
 ## 实际数据链路
 
@@ -53,7 +53,7 @@ py -3.12 -m venv .venv-asr
 - 拍照仍检查当前设备、景别和停止状态。ASR 本身不移动机械臂。
 - Python 只监听 127.0.0.1，最多 4 个会话，空闲 60 秒回收；录音和转写只在内存中处理，不写日志或文件。
 
-旧云端 Whisper 与浏览器识别保留为手选。偏好版本为 `speechDefaultsVersion:5`：旧云端默认迁移到本地，保留此前手选的浏览器，新版手选云端会保留。
+拍摄页仅创建本地识别器，不提供云端 Whisper 或浏览器识别切换。无论历史偏好版本与服务商，ASR 均统一为本地 Zipformer；TTS 偏好保持原选择。旧云端接口仅保留后端兼容，不参与当前页面的收听流程。
 
 接口字段与错误见 [LOCAL_ASR_API.md](LOCAL_ASR_API.md)。
 

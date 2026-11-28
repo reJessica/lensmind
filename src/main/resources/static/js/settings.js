@@ -50,8 +50,7 @@ export function normalizePreferences(input) {
     voiceVolume: typeof value.voiceVolume === 'number' && Number.isFinite(value.voiceVolume)
       ? Math.min(1, Math.max(0, value.voiceVolume)) : DEFAULT_PREFERENCES.voiceVolume,
     voiceProvider,
-    asrModel: value.asrModel === 'browser' && [2, 3, 4, 5].includes(value.speechDefaultsVersion) ? 'browser'
-      : value.speechDefaultsVersion === 5 && value.asrModel === speechProfile.asr ? speechProfile.asr : LOCAL_ASR_MODEL,
+    asrModel: LOCAL_ASR_MODEL,
     ttsModel: speechModel('ttsModel', speechProfile.tts),
     cloudWorkspace: typeof value.cloudWorkspace === 'string' && /^[a-zA-Z0-9-]{0,80}$/.test(value.cloudWorkspace) ? value.cloudWorkspace : '',
     speechDefaultsVersion: 5,
@@ -84,25 +83,25 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     $('llm-profile').value = preferences.llmProfile;
     const custom = preferences.llmProfile === 'custom';
     $('custom-provider-field').hidden = !custom;
+    $('model-advanced').open = custom;
     $('ai-base-url').readOnly = $('ai-model').readOnly = !custom;
   }
 
   function renderSpeechOptions() {
     const profile = SPEECH_PROFILES[preferences.voiceProvider];
-    const cloud = !['browser', LOCAL_ASR_MODEL].includes(preferences.asrModel) || preferences.ttsModel !== 'browser';
+    const cloud = preferences.ttsModel !== 'browser';
     $('speech-provider').value = preferences.voiceProvider;
-    for (const [id, kind] of [['settings-asr-model', 'asr'], ['settings-tts-model', 'tts']]) {
-      const select = $(id);
-      const first = kind === 'asr' ? LOCAL_ASR_MODEL : profile[kind];
-      if (select.options[0].value !== first || select.dataset.provider !== preferences.voiceProvider) {
-        select.replaceChildren(...(kind === 'asr' ? [new Option('本地 Zipformer · 流式中文识别（推荐）', LOCAL_ASR_MODEL)] : []),
-          new Option(`${profile.label} · ${profile[kind]}（云端）`, profile[kind]),
-          ...(kind === 'tts' && preferences.voiceProvider === 'uniapi' ? [new Option('UniAPI · tts-1（备用，曾上游满载）', 'tts-1')] : []),
-          new Option(kind === 'asr' ? '浏览器语音识别（手动选择）' : '浏览器语音播报（手动选择）', 'browser'));
-        select.dataset.provider = preferences.voiceProvider;
-      }
-      select.value = preferences[kind === 'asr' ? 'asrModel' : 'ttsModel'];
+    $('settings-asr-model').replaceChildren(new Option('本地 Zipformer · 流式中文识别', LOCAL_ASR_MODEL));
+    $('settings-asr-model').value = LOCAL_ASR_MODEL;
+    $('settings-asr-model').disabled = true;
+    const select = $('settings-tts-model');
+    if (select.dataset.provider !== preferences.voiceProvider) {
+      select.replaceChildren(new Option(`${profile.label} · ${profile.tts}（云端）`, profile.tts),
+        ...(preferences.voiceProvider === 'uniapi' ? [new Option('UniAPI · tts-1（备用）', 'tts-1')] : []),
+        new Option('浏览器语音播报（手动选择）', 'browser'));
+      select.dataset.provider = preferences.voiceProvider;
     }
+    select.value = preferences.ttsModel;
     $('cloud-speech-fields').hidden = !cloud;
     $('speech-workspace-field').hidden = !profile.workspace;
     $('speech-workspace').required = cloud && profile.workspace;
@@ -110,14 +109,14 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     $('speech-key-label').textContent = profile.workspace ? '百炼北京地域 API Key' : 'UniAPI API Key';
     $('speech-key').placeholder = profile.workspace ? '填写百炼北京地域 Key' : '可留空读取已配置的本机 UniAPI Key';
     $('speech-key-hint').textContent = profile.workspace ? '需要百炼账号和北京地域 Workspace；提交后清空输入，临时保存 30 分钟。'
-      : '无需百炼账号或 Workspace ID；可读取本机已配置的 UniAPI Key，也可在这里单独填写。';
+      : '留空可使用本机 UniAPI Key。';
     const voice = preferences.ttsModel === 'tts-1' ? 'alloy' : profile.voice;
-    $('speech-voice-note').textContent = `云端音色固定为 ${voice}，模型不会自动切换。` + (preferences.ttsModel === SPEECH_PROFILES.uniapi.tts ? ' Gemini 语速为风格提示，不保证精确倍速。' : '');
+    $('speech-voice-note').textContent = `音色 ${voice} · 不自动切换模型。`;
     if (!cloud) $('speech-key').value = '';
     $('settings-voice-preview').disabled = $('settings-voice-enabled').disabled = !voiceAvailable();
     $('settings-voice-capability').textContent = !voiceAvailable() ? '当前浏览器不支持所选播报方式，仍可查看文字。'
       : !speechAvailable() ? '当前浏览器不支持所选录音方式，请用文字输入。'
-      : preferences.ttsModel === 'browser' ? '试听浏览器播报，不会开启麦克风。' : `试听将调用 ${profile.label} ${preferences.ttsModel}，固定音色 ${voice}。`;
+      : preferences.ttsModel === 'browser' ? '试听浏览器播报，不会开启麦克风。' : `试听使用 ${profile.label} · ${voice}。`;
   }
 
   function render() {
@@ -174,7 +173,7 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     if (id === 'ai-base-url') { $('ai-key').value = ''; matchProvider(); }
     update({ llmProfile: 'custom', modelBaseUrl: $('ai-base-url').value, modelName: $('ai-model').value });
   });
-  for (const [id, field] of [['settings-asr-model', 'asrModel'], ['settings-tts-model', 'ttsModel'], ['speech-workspace', 'cloudWorkspace']]) {
+  for (const [id, field] of [['settings-tts-model', 'ttsModel'], ['speech-workspace', 'cloudWorkspace']]) {
     $(id).addEventListener('change', () => {
       update({ [field]: $(id).value.trim() });
     });
@@ -183,7 +182,7 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     const voiceProvider = $('speech-provider').value;
     const profile = SPEECH_PROFILES[voiceProvider];
     $('speech-key').value = '';
-    update({ voiceProvider, asrModel: preferences.asrModel === LOCAL_ASR_MODEL ? LOCAL_ASR_MODEL : profile.asr, ttsModel: profile.tts });
+    update({ voiceProvider, asrModel: LOCAL_ASR_MODEL, ttsModel: profile.tts });
     $('speech-session-status').textContent = '已切换语音服务商，请保存语音配置；不会沿用其他服务商的密钥。';
   });
   for (const [id, name] of [['grid-toggle', 'grid'], ['frame-toggle', 'frame'], ['settings-voice-enabled', 'voiceEnabled']]) {
@@ -251,10 +250,9 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     try {
       const status = await aiApi.status(controller.signal);
       $('settings-backend-mode').textContent = status.mode === 'MOCK' ? '模拟模式 · 独立接口不调用外部模型' : 'LIVE · 独立接口使用云端模型';
-      for (const kind of ['asr', 'tts']) {
-        const config = status.models[kind];
-        $(`settings-${kind}-status`).textContent = `${config.model || '未指定模型'} · ${config.configured ? '配置齐全，未在此验证' : '配置未齐全'}`;
-      }
+      $('settings-asr-status').textContent = preferences.asrModel === LOCAL_ASR_MODEL
+        ? '本地 Zipformer · 无需 API Key' : `${preferences.asrModel} · 已选择`;
+      $('settings-tts-status').textContent = `${preferences.ttsModel} · 已选择`;
       $('settings-service-status').textContent = `状态已更新。本进程真实调用尝试 ${status.liveCallAttempts}/${status.maxLiveCalls}；查看状态不调用付费模型。`;
     } catch (error) {
       for (const id of ['settings-backend-mode', 'settings-asr-status', 'settings-tts-status']) $(id).textContent = '暂时无法获取';
