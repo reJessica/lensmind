@@ -2,8 +2,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { cropRegion } from '../src/main/resources/static/js/crop.js';
 
-test('摄影助手独立朗读文字回答，失败不关闭后续播报，关闭偏好及离页后不播报', async () => {
+test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停止', async t => {
   class Element extends EventTarget {
     value = ''; textContent = ''; hidden = false; checked = false; disabled = false;
     dataset = {}; children = []; options = [{ value: '' }]; width = 1280; height = 720;
@@ -12,9 +13,12 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     attributes = new Map();
     add(node) { this.options.push(node); }
     append(...nodes) { this.children.push(...nodes); }
+    insertBefore(node, before) {
+      this.children = this.children.filter(child => child !== node);
+      this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node);
+      node.remove = () => { this.children = this.children.filter(child => child !== node); };
+    }
     prepend(node) { this.children.unshift(node); }
-    insertBefore(node, before) { node.parentElement = this; this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); }
-    remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(node => node !== this); }
     replaceChildren(...nodes) { this.children = nodes; this.options = nodes; }
     get firstElementChild() { return this.children[0] ??= new Element(); }
     setAttribute(name, value) { this.attributes.set(name, String(value)); }
@@ -24,9 +28,10 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     toggleAttribute(name, on) { if (on) this.setAttribute(name, ''); else this.removeAttribute(name); }
     querySelectorAll() { return []; }
     close() {} focus() {}
-    getContext() { return { canvas: this, clearRect() {}, fillRect() {}, drawImage() {} }; }
-    toDataURL() { return 'data:image/jpeg;base64,TEST'; }
-    async play() { this.readyState = 2; this.videoWidth = 1280; this.videoHeight = 720; }
+    getContext() { return { canvas: this, clearRect() {}, drawImage() {}, fillRect() {} }; }
+    toBlob(callback) { callback(new Blob(['test.jpeg'])); }
+    toDataURL() { return 'data:image/jpeg;base64,dGVzdA=='; }
+    async play() { this.readyState = 2; this.videoWidth = 1280; this.videoHeight = 720; this.currentTime = 0; }
   }
   const html = await readFile(new URL('../src/main/resources/static/index.html', import.meta.url), 'utf8');
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
@@ -37,30 +42,49 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
   });
   const win = Object.assign(new EventTarget(), { scrollTo() {} });
   const saved = new Map();
-  for (const name of ['document', 'window', 'location', 'Image', 'Option', 'Audio', 'fetch', 'setInterval', 'setTimeout', 'cancelAnimationFrame', 'requestAnimationFrame', 'navigator']) {
+  for (const name of ['document', 'window', 'location', 'Image', 'Option', 'Audio', 'fetch', 'setInterval',
+    'setTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'createImageBitmap', 'navigator']) {
     saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
   }
   const track = Object.assign(new EventTarget(), { stop() {} });
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) } } });
   const originalTimeout = globalThis.setTimeout;
-  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0, deviceState = 'IDLE', offline = false, holdSpeech = false, releaseSpeech, ttsSignal;
+  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0;
+  let visionTick, planRequest, visionBox, legacyBackend = false;
+  let deviceState = 'IDLE', offline = false, holdSpeech = false, releaseSpeech, ttsSignal;
   const statusPolls = [];
+  const plan = { ratio: '1:1', framing: 'half', composition: null, cells: [4, 5, 7, 8],
+    personBox: { x: .51, y: .4, width: .44, height: .55 }, poseTip: '模仿示例姿势，放松肩膀。' };
   const ttsTexts = [];
   const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   Object.assign(globalThis, {
     document: doc, window: win, location: { hash: '#studio' },
     Image: class {}, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     Audio: class { constructor() { lastAudio = this; } pause() {} async play() { played++; } },
-    setInterval: (callback, delay) => { if (delay === 4000) statusPolls.push(callback); return 0; }, cancelAnimationFrame() {}, requestAnimationFrame: () => 0,
+    setInterval: (tick, ms) => {
+      if (ms === 250) visionTick = tick;
+      if (ms === 4000) statusPolls.push(tick);
+      return 0;
+    },
+    requestAnimationFrame: () => 0, cancelAnimationFrame() {},
+    createImageBitmap: async () => ({ width: 800, height: 800, close() {} }),
     setTimeout: (...args) => { const timer = originalTimeout(...args); timer.unref(); return timer; },
     fetch: async (path, options = {}) => {
-      if (path === '/api/ai/session') return response({ connected: true, id: 'llm', model: 'qwen3.5-27b', host: 'example.test', expiresAt: new Date(Date.now() + 600000).toISOString() });
+      if (path === '/api/ai/session') return response({ connected: true, id: 'llm', model: 'qwen3.5-27b', host: 'example.test',
+        expiresAt: new Date(Date.now() + 600000).toISOString(), ...(legacyBackend ? {} : { referencePlan: true }) });
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/device/calibration') return response({ required: false, ready: true });
       if (path === '/api/device/status') return offline ? response({ message: '控制服务未连接' }, 503) : response({ connected: true, mode: 'MOCK', state: deviceState, x: 0, y: 0 });
       if (path === '/api/device/move') { movementRequests++; return response({ connected: true, mode: 'MOCK', state: 'IDLE' }); }
+      if (path.startsWith('/api/vision/person?')) {
+        const query = new URLSearchParams(path.split('?')[1]);
+        return response({ frameId: Number(query.get('frameId')), timestamp: Number(query.get('timestamp')),
+          width: 480, height: 270, people: visionBox ? [{ ...visionBox, confidence: .99 }] : [] });
+      }
       if (path === '/api/ai/analyze') {
-        const motion = JSON.parse(options.body).prompt === '相机向左一点';
+        const body = JSON.parse(options.body);
+        if (body.mode === 'reference-plan') { planRequest = body; return response({ referencePlan: plan }); }
+        const motion = body.prompt === '相机向左一点';
         return response({ summary: '内部分析摘要，不应作为播报内容。', feedback: motion ? '已生成向左微调计划，等待控制端执行。' : '可以使用柔和的侧光。',
           steps: [], observations: [], targets: [], settings: null,
           controlPlan: { fileName: 'lensmind-plan-test.json', downloadUrl: '/api/ai/control-plans/test',
@@ -114,6 +138,74 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     assert.equal(get('ai-plan-json').textContent.includes('feedback'), false, '控制 JSON 不混入播报文本');
     assert.equal(ttsTexts.at(-1), '已生成向左微调计划，等待控制端执行。');
     assert.equal(get('ai-plan-download').href, '/api/ai/control-plans/test');
+    lastAudio.onended();
+
+    await t.test('参考图一键应用画幅、半身和四格，进入站位框后播报姿势', async () => {
+      const video = get('camera-video');
+      assert.equal(get('camera-placeholder').hidden, true);
+      const originalCrop = get('live-crop').style.width;
+      get('ai-reference-file').files = [{ name: 'pose.png', type: 'image/png', size: 400 }];
+      get('ai-reference-file').dispatchEvent(new Event('change'));
+      await settle();
+      assert.equal(planRequest, undefined, '本地选图不自动上传');
+      get('command-input').value = '';
+      legacyBackend = true;
+      get('ai-connect-form').dispatchEvent(new Event('submit', { cancelable: true }));
+      await settle();
+      get('ai-analyze').dispatchEvent(new Event('click'));
+      await settle();
+      assert.equal(planRequest, undefined, '旧后端不会收到只包含参考图的新请求');
+      assert.match(get('ai-status').textContent, /服务版本较旧/);
+      legacyBackend = false;
+      get('ai-connect-form').dispatchEvent(new Event('submit', { cancelable: true }));
+      await settle();
+      get('ai-analyze').dispatchEvent(new Event('click'));
+      await settle();
+      assert.equal(planRequest.reference, 'data:image/jpeg;base64,dGVzdA==');
+      assert.equal(planRequest.scene, undefined, '只发送参考图');
+      assert.equal(get('ai-reference-plan').hidden, false);
+      assert.equal(get('ai-reference-settings').textContent, '1:1 · 半身 · 右下四格');
+      assert.equal(get('ai-result').hidden, true);
+      assert.equal(get('live-crop').style.width, originalCrop, '等用户应用才调整画幅');
+      const startedAt = attempts;
+      get('ai-apply-reference').dispatchEvent(new Event('click'));
+      await settle();
+      assert.equal(get('reference-person-frame').hidden, false);
+      assert.equal(get('capture-button').disabled, true, '参考图指导等待人物进入站位框');
+      assert.equal(get('person-target-area').children.length, 4);
+      assert.equal(attempts, startedAt + 1);
+      assert.match(ttsTexts.at(-1), /对准虚线人物框/);
+      assert.equal(movementRequests, 0);
+
+      lastAudio.onended();
+      const crop = cropRegion(1280, 720, { ratio: '1:1', zoom: 1.15, cx: .5, cy: .48 });
+      const box = plan.personBox;
+      visionBox = { x: crop.x + box.x * crop.width, y: crop.y + box.y * crop.height,
+        width: box.width * crop.width, height: box.height * crop.height };
+      assert.ok(Math.abs(parseFloat(get('live-crop').style.width) / 100 - crop.width) < .001);
+      const now = Date.now();
+      let tick = now;
+      const time = t.mock.method(Date, 'now', () => tick);
+      try {
+        for (let i = 1; i <= 3; i++) {
+          tick = now + i * 260;
+          video.currentTime += .26;
+          await visionTick();
+        }
+        await settle();
+        assert.equal(get('reference-person-frame').firstElementChild.textContent, '站位已对齐');
+        assert.equal(ttsTexts.at(-1), plan.poseTip);
+        assert.equal(get('guide-done').hidden, false);
+        assert.equal(get('capture-button').disabled, true, '参考图指导等待确认当前动作');
+        get('ai-remove-reference').dispatchEvent(new Event('click'));
+        assert.equal(get('reference-person-frame').hidden, true);
+        assert.equal(get('guide-done').hidden, true);
+      } finally {
+        time.mock.restore();
+        visionBox = undefined;
+      }
+    });
+
     get('settings-delay').value = '0';
     get('settings-delay').dispatchEvent(new Event('change'));
     assert.equal(get('capture-button').disabled, false, `人物检测加载时快门可用：${get('capture-hint').textContent} / ${get('camera-status').textContent}`);
@@ -128,21 +220,23 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     await ask('拍摄');
     assert.equal(get('gallery-count').textContent, '02', '控制端运动状态仍应拦截');
     deviceState = 'IDLE'; offline = true; holdSpeech = true;
+    const beforeOffline = played;
     await ask();
     assert.equal(get('voice-status').textContent, '正在合成语音…');
     await statusPolls[0](); await settle();
     assert.equal(ttsSignal.aborted, false, '控制服务断连不能取消正在合成的回答');
     releaseSpeech(); await settle();
-    assert.equal(played, 6, '设备断连时云端晚到音频仍应播放');
+    assert.equal(played, beforeOffline + 1, '设备断连时云端晚到音频仍应播放');
     lastAudio.onended();
     offline = false; holdSpeech = false; deviceState = 'STOPPED';
     await statusPolls[0](); await settle();
     await ask();
-    assert.equal(played, 7, '机械臂停止锁定不应禁止后续主动提问的朗读');
+    assert.equal(played, beforeOffline + 2, '机械臂停止锁定不应禁止后续主动提问的朗读');
+    const beforeLeaving = attempts;
     globalThis.location.hash = '#gallery';
     win.dispatchEvent(new Event('hashchange'));
     await ask();
-    assert.equal(attempts, 8, '离开拍摄页不发起新播报');
+    assert.equal(attempts, beforeLeaving, '离开拍摄页不发起新播报');
   } finally {
     win.dispatchEvent(new Event('pagehide'));
     await settle();

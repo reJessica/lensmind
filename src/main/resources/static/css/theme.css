@@ -86,7 +86,7 @@ body:has(#home-carousel[data-tone="blue"]) {
   font-weight: 730;
 }
 :is(.flow-heading p, .service-reading, .assistant-status, .review-note span,
-    .preferences-overview > p, .preferences-card-heading p, .preferences-field p, .preferences-caption,
+    .preferences-card-heading p, .preferences-field p, .preferences-caption,
     .connection-reading > span, .preference-switch small, .preferences-status-list dt, .preferences-field output) {
   color: var(--scene-muted);
 }
@@ -128,7 +128,7 @@ body:has(#home-carousel[data-tone="blue"]) {
 body :is(button, a, input, select, summary):focus-visible { outline-color: var(--scene-focus); }
 
 #studio .panel,
-.preferences-card, .preferences-overview, .review-note, .photo-card {
+.preferences-card, .review-note, .photo-card {
   border: 0;
   border-radius: 17px;
   background: var(--scene-paper);
@@ -139,7 +139,7 @@ body :is(button, a, input, select, summary):focus-visible { outline-color: var(-
   border-color: color-mix(in srgb, var(--scene-ink) 12%, transparent);
 }
 
-:is(.panel-title h2, .assistant-heading h2, .preferences-card-heading h2, .preferences-overview h2) {
+:is(.panel-title h2, .assistant-heading h2, .preferences-card-heading h2) {
   color: var(--scene-ink);
   font-weight: 740;
 }
@@ -158,7 +158,7 @@ body :is(button, a, input, select, summary):focus-visible { outline-color: var(-
 }
 
 :is(.voice-bar, .analysis-section, .reference-visual,
-    .connection-reading, .preferences-tag, .preferences-notice) {
+    .connection-reading, .preferences-notice) {
   border-color: var(--scene-line);
   background: var(--scene-soft);
   color: var(--scene-ink);
@@ -179,6 +179,72 @@ body :is(button, a, input, select, summary):focus-visible { outline-color: var(-
 .analysis-section summary, .reference-heading, .reference-filename { color: var(--scene-ink); }
 .reference-card { border-color: var(--scene-line); background: var(--scene-paper); }
 .reference-caption, .reference-heading span { color: var(--scene-muted); }
+
+.reference-plan {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border-radius: 12px;
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+}
+.reference-plan h3 { margin: 0; font-size: 13px; }
+.reference-plan p { font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+#ai-reference-settings { color: var(--scene-muted); font-weight: 650; }
+#ai-apply-reference {
+  min-height: 42px;
+  border-color: transparent;
+  background: var(--scene-ink);
+  color: var(--scene-paper);
+}
+#ai-apply-reference:hover { background: var(--scene-focus); }
+.reference-person-frame {
+  --guide-line: #fff5aa;
+  position: absolute;
+  z-index: 3;
+  border: 2px dashed var(--guide-line);
+  border-radius: 8px;
+  background: #ffef971a;
+  box-shadow: 0 0 0 1px #121318ad, inset 0 0 0 1px #12131880;
+  pointer-events: none;
+}
+.reference-person-frame.is-aligned { --guide-line: #d4ff9f; background: #b8ff861a; }
+.reference-person-frame span {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  max-width: calc(100% - 8px);
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #121318da;
+  color: var(--guide-line);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.reference-guide-cue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 12px 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--scene-tint);
+  color: var(--scene-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.reference-guide-cue button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-color: transparent;
+  border-radius: 100px;
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+  white-space: nowrap;
+}
 
 .review-note { margin-block: 18px; padding: 13px 18px; }
 #gallery .gallery-empty {
@@ -204,7 +270,6 @@ body :is(button, a, input, select, summary):focus-visible { outline-color: var(-
 .photo-card .photo-card-info, .photo-card .photo-card-info span:last-child, .photo-card-info button { color: var(--scene-muted); }
 .photo-card-info button:hover { background: var(--scene-tint); }
 
-.preferences-overview { padding: clamp(16px, 2vw, 24px); }
 .preferences-field :is(input:not([type="range"]), select),
 .preferences-field input[readonly], .shutter-controls select, .editor-controls select {
   border-color: var(--scene-line);

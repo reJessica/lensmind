@@ -3,13 +3,29 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isSpokenShutter, parseCommand, spokenYawDirection } from '../src/main/resources/static/js/commands.js';
 import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resources/static/js/crop.js';
-import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
+import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame,
+  referencePersonBox, referencePositionCue } from '../src/main/resources/static/js/vision.js';
 import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 import { DEFAULT_PREFERENCES, normalizePreferences, readPreferences, savePreferences } from '../src/main/resources/static/js/settings.js';
 import { FIXED_MODELS, LLM_PROFILES, SPEECH_PROFILES, LOCAL_ASR_MODEL, isCloudAsr, isCloudTts } from '../src/main/resources/static/js/model-presets.js';
 import { createUtteranceBuffer, createCloudSpeechInput, microphoneConstraints, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
 import { createStreamingResultHandler, createLocalSpeechInput } from '../src/main/resources/static/js/local-speech.js';
 import { openWristCamera } from '../src/main/resources/static/js/wrist-camera.js';
+
+test('参考图人物框位于目标网格，站位提示按被摄者的左右描述', () => {
+  const plan = { framing: 'half', cells: [4, 5, 7, 8], composition: null };
+  const box = { x: .54, y: .42, width: .39, height: .54 };
+  assert.deepEqual(referencePersonBox({ ...plan, personBox: box }), box);
+  const fallback = referencePersonBox({ ...plan, personBox: { ...box, x: -.5 } });
+  assert.ok(fallback.x >= 1 / 3 && fallback.y >= 1 / 3);
+  assert.ok(fallback.x + fallback.width <= 1 && fallback.y + fallback.height <= 1);
+  const frame = person => ({ timestamp: 1000, people: [{ id: 1, person }] });
+  assert.match(referencePositionCue(frame({ ...box, x: .2 }), 1, box, 1050), /自己的左边/);
+  assert.match(referencePositionCue(frame({ ...box, height: .2 }), 1, box, 1050), /靠近/);
+  assert.equal(referencePositionCue(frame(box), 1, box, 1050), '');
+  assert.match(referencePositionCue(frame(box), 2, box, 1050), /虚线人物框/);
+  assert.match(referencePositionCue(frame(box), 1, box, 2600), /等待实时画面/);
+});
 
 test('固定模型预设和旧配置迁移保留正确服务商，不接受未知语音模型', () => {
   assert.equal(LLM_PROFILES.recommended.model, 'qwen3.5-flash-2026-02-23');

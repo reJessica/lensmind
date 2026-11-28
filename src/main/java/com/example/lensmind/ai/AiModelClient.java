@@ -83,6 +83,8 @@ class AiModelClient {
     record Observation(String name, String location) {}
     record Target(String name, List<Integer> cells, String advice) {}
     record Settings(String framing, String composition, List<Integer> cells, String part, String zoom, String ratio) {}
+    record PersonBox(double x, double y, double width, double height) {}
+    record ReferencePlan(String ratio, String framing, String composition, List<Integer> cells, PersonBox personBox, String poseTip) {}
     record MotionAction(String type, String direction, int step) {}
     record Guidance(String summary, List<Observation> observations, List<Target> targets, List<String> steps,
                     Settings settings, String feedback, List<MotionAction> actions) {
@@ -157,6 +159,51 @@ class AiModelClient {
         return guidance(complete(connection, ASSISTANT + OUTPUT_CONTRACT, prompt, scene, reference, 2600));
     }
 
+    ReferencePlan planReference(Connection connection, String prompt, String reference) {
+        String instructions = """
+                根据参考图生成可一键应用的单人人像拍摄方案。只返回一个 JSON 对象，禁止输出分析报告或设备指令。
+                ratio 选择最接近参考图的画幅：1:1、4:3、3:4、16:9、9:16。
+                framing 表示画幅内露出的身体范围，取 any、half（约到腰部）、full（包含头和脚）。
+                composition 取 left、center、right 或 null。非标准位置使用 cells，编号从左上角 0 到右下角 8，按行排列。
+                composition 和非空 cells 二选一；用九宫格时只返回人物的主要落点区域。
+                personBox 是建议人物在最终画幅中的可见范围，左上为原点，x/y/width/height 都以最终画幅归一化，
+                框必须完整位于 0 到 1 内，并与构图目标一致。多人的参考图选择一个主要人物。
+                poseTip 是一句可以直接对拍摄对象朗读的姿态或表情建议，使用被摄者自身左右，
+                不给出站位、相机、机械臂、拍摄操作或定位确认指令。图中没有适合模仿的姿态时用自然的姿势建议。
+                用户要求作为拍摄偏好，仅用于选择本方案的有效字段。
+                例：{"ratio":"3:4","framing":"half","composition":null,"cells":[4,5,7,8],
+                "personBox":{"x":0.42,"y":0.36,"width":0.54,"height":0.61},"poseTip":"请放松肩膀，轻轻侧一点脸。"}
+                """;
+        String answer = complete(connection, instructions, "按这张参考图生成方案。用户要求：" + prompt, null, reference, 1500);
+        try {
+            JsonNode result = readAnswer(answer);
+            Settings settings = settings(result);
+            String poseTip = shortText(result.path("poseTip"), 80);
+            if (settings == null || settings.ratio() == null || settings.framing() == null
+                    || (settings.composition() == null) == settings.cells().isEmpty() || poseTip.isEmpty()) {
+                throw invalidReferencePlan();
+            }
+            return new ReferencePlan(settings.ratio(), settings.framing(), settings.composition(), settings.cells(),
+                    personBox(result.path("personBox")), poseTip);
+        } catch (tools.jackson.core.JacksonException e) {
+            throw invalidReferencePlan();
+        }
+    }
+
+    private PersonBox personBox(JsonNode node) {
+        for (String key : List.of("x", "y", "width", "height")) {
+            if (!node.path(key).isNumber()) return null;
+        }
+        double x = node.path("x").asDouble(), y = node.path("y").asDouble();
+        double width = node.path("width").asDouble(), height = node.path("height").asDouble();
+        return x >= 0 && y >= 0 && width >= .05 && height >= .10 && x + width <= 1.000001 && y + height <= 1.000001
+                ? new PersonBox(x, y, Math.min(width, 1 - x), Math.min(height, 1 - y)) : null;
+    }
+
+    private AiException invalidReferencePlan() {
+        return new AiException(502, "模型没有返回完整的拍摄方案，请重新生成或更换视觉模型。");
+    }
+
     Map<String, Object> payload(Connection connection, String system, String prompt, String scene, String reference, int tokens) {
         var content = new ArrayList<Map<String, Object>>();
         content.add(Map.of("type", "text", "text", prompt));
@@ -223,11 +270,15 @@ class AiModelClient {
         };
     }
 
-    Guidance guidance(String answer) {
+    private JsonNode readAnswer(String answer) {
         answer = answer.strip();
         if (answer.startsWith("```")) answer = answer.replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
+        return mapper.readTree(answer);
+    }
+
+    Guidance guidance(String answer) {
         try {
-            JsonNode result = mapper.readTree(answer);
+            JsonNode result = readAnswer(answer);
             String summary = shortText(result.path("summary"), 500);
             String feedback = shortText(result.path("feedback"), 160);
             if (summary.isEmpty()) summary = feedback;

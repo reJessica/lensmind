@@ -12,6 +12,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -135,6 +136,49 @@ class AiTests {
     }
 
     @Test
+    void referencePlanUsesOnlyTheReferenceAndReturnsApplicableSettings() throws Exception {
+        var client = new StubClient();
+        var controller = new AiController(client, mapper);
+        var open = request(Map.of("baseUrl", "https://api.openai.com/v1", "model", "vision-model", "apiKey", "fake-test-only"));
+        var connection = (Map<?, ?>) controller.connect(open).getBody();
+        assertEquals(true, connection.get("referencePlan"));
+        assertEquals(Map.of("connected", false, "referencePlan", true), controller.status(request(Map.of())).getBody());
+        String reference = jpeg(128);
+        client.answer = """
+                {"ratio":"1:1","framing":"half","composition":null,"cells":[4,5,7,8],
+                "personBox":{"x":0.45,"y":0.35,"width":0.52,"height":0.62},"poseTip":"请放松肩膀。",
+                "actions":[{"type":"MOVE","direction":"LEFT","step":1}]}
+                """;
+        Supplier<MockHttpServletRequest> analyze = () -> {
+            var input = request(Map.of("connectionId", connection.get("id"), "mode", "reference-plan",
+                    "reference", reference, "prompt", "保持参考图的站姿"));
+            input.setSession((MockHttpSession) open.getSession());
+            return input;
+        };
+        var result = controller.analyze(analyze.get());
+        var body = (Map<?, ?>) result.getBody();
+        assertEquals(1, body.size());
+        var plan = (AiModelClient.ReferencePlan) body.get("referencePlan");
+        assertEquals("1:1", plan.ratio());
+        assertEquals("half", plan.framing());
+        assertEquals(List.of(4, 5, 7, 8), plan.cells());
+        assertEquals(new AiModelClient.PersonBox(.45, .35, .52, .62), plan.personBox());
+        assertEquals("请放松肩膀。", plan.poseTip());
+        assertEquals("no-store", result.getHeaders().getCacheControl());
+        assertNull(client.scene);
+        assertEquals(reference, client.reference);
+
+        client.answer = client.answer.replace("0.52", "0.9");
+        body = (Map<?, ?>) controller.analyze(analyze.get()).getBody();
+        assertNull(((AiModelClient.ReferencePlan) body.get("referencePlan")).personBox());
+        client.answer = client.answer.replace("\"composition\":null", "\"composition\":\"center\"");
+        assertEquals(502, assertThrows(AiException.class, () -> controller.analyze(analyze.get())).status().value());
+        var missing = request(Map.of("connectionId", connection.get("id"), "mode", "reference-plan"));
+        missing.setSession((MockHttpSession) open.getSession());
+        assertEquals(400, assertThrows(AiException.class, () -> controller.analyze(missing)).status().value());
+    }
+
+    @Test
     void staleConnectionAndInvalidJpegCannotSendAnyPhoto() {
         var client = new StubClient();
         var controller = new AiController(client, mapper);
@@ -170,6 +214,7 @@ class AiTests {
         private String scene;
         private String reference;
         private Map<String, Object> sentPayload;
+        private String answer;
 
         StubClient() { super(AiTests.this.mapper, "api.openai.com,openrouter.ai"); }
 
@@ -181,6 +226,7 @@ class AiTests {
             this.reference = reference;
             this.sentPayload = payload(model, system, prompt, scene, reference, tokens);
             if (calls == 1) return "OK";
+            if (answer != null) return answer;
             return """
                     ```json
                     {"summary":"人物可往画面右侧站一些。","observations":[{"name":"树","location":"画面中央"}],
