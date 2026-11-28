@@ -40,7 +40,7 @@ function node(tag, text) {
 }
 
 function render(result) {
-  $('ai-summary').textContent = result.summary;
+  $('ai-summary').textContent = result.feedback || result.summary;
   $('ai-observations').replaceChildren(...result.observations.map(item => node('li', `${item.name} · ${item.location}`)));
   $('ai-steps').replaceChildren(...result.steps.map(step => node('li', step)));
   $('ai-targets').replaceChildren(...result.targets.map(target => {
@@ -62,6 +62,16 @@ function render(result) {
     card.append(visual, label);
     return card;
   }));
+  const document = result.controlPlan;
+  if (result.feedback || document) $('analysis-tools').open = true;
+  $('ai-control-plan').hidden = !document;
+  $('ai-plan-json').textContent = document ? JSON.stringify(document.plan, null, 2) : '';
+  if (document) {
+    $('ai-plan-download').href = document.downloadUrl;
+    $('ai-plan-download').download = document.fileName;
+  } else {
+    $('ai-plan-download').removeAttribute('href');
+  }
   $('ai-result').hidden = false;
 }
 
@@ -260,10 +270,10 @@ export function setupAi(getScene, onAdvice) {
       if (pending !== active) return;
       pending = null;
       updateAnalyze();
-      if (localRequest) return;
+      if (localRequest && !result.feedback && !result.controlPlan) return;
       const cropChanged = initialSceneVersion !== sceneVersion;
       const sceneChanged = Boolean(source) && cropChanged;
-      const confirmation = onAdvice(result, { pose: pose && Boolean(source), applySettings: assistant, cropChanged, sceneChanged });
+      const confirmation = onAdvice(result, { pose: pose && Boolean(source), applySettings: assistant && !localRequest, cropChanged, sceneChanged });
       if (!sceneChanged || confirmation) {
         resultUsesScene = Boolean(source) && !sceneChanged && !result.settings;
         const reply = sceneChanged ? { summary: confirmation, steps: [], observations: [], targets: [] } : result;

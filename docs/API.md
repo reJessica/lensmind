@@ -307,3 +307,14 @@ ASR 接收 16kHz、16bit、小端单声道 PCM WAV，0.1～15 秒，上传不超
 分支整合后 SO-101 控制桥默认端口为 8767（`LENSMIND_SO101_BRIDGE_PORT`）；本地 ASR 使用 9001，避免端口冲突。实机脚本使用对应 `--listen 8767`，不会因启动网页或运行测试而自动启动实机控制。
 
 本地 ASR 现默认随 Spring Boot 自动准备与启动（9001）；原 `/api/ai/local-asr/*` 路由与成功响应不变。准备中/失败返回 503 与具体进度或错误原因。安装 Python 及拉取 LFS 权重后即可启动后端；配置项和进程生命周期见 [LOCAL_ASR.md](LOCAL_ASR.md)。
+
+### 摄影模型双输出（2026-11-28）
+
+`POST /api/ai/analyze` 在原 `summary/observations/targets/steps/settings` 字段之外新增：
+
+- `feedback`：最多 160 字的自然语言反馈，前端显示并发送现有 TTS，不朗读 JSON。
+- `controlPlan: {fileName, downloadUrl, plan}`：本地已保存的调整计划，`plan` 是文件内容，字段与例子见 [机械臂计划对接](MOTION_PLAN_HANDOFF.md)。
+
+`GET /api/ai/control-plans/{planId}` 下载 UTF-8 JSON，响应为 `application/json`、`Content-Disposition: attachment`、`Cache-Control: no-store`。仅原浏览器会话可下载且仅允许本机来源，未知或其他会话的计划返回 404，外部来源 403。文件持久化目录默认 `data/control-plans`，可用 `lensmind.ai.control-plan-dir` 修改。路径与文件名由后端生成，不接受模型指定路径。写入失败返回 500，模型格式或动作参数无效返回 502。
+
+`actions` 只允许 0～1 个 MOVE，`direction` 为 LEFT/RIGHT/UP/DOWN/FORWARD/BACKWARD/PITCH_UP/PITCH_DOWN，`step` 必须是整数 1。未明确要求调整相机/机位/机械臂，或者否定、提问、数字裁剪时，后端将动作清空并生成 NO_ACTION 文件。旧模型响应缺少 feedback/actions 时兼容回退为 summary 和空动作。摄影接口不执行这些计划，不访问 DeviceGateway；停止与拍照仍由原入口处理。

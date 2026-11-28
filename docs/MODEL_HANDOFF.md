@@ -1,5 +1,8 @@
 # 模型模块交接
 
+2026-11-28 新增模型双输出：`feedback` 专供用户与 TTS；`controlPlan` 为单步 direction + step 的独立 JSON 文件。组员二读取文件后做设备校验与执行，生成文件本身不移动机械臂。详见 [机械臂 JSON 对接](MOTION_PLAN_HANDOFF.md)。
+
+
 更新人：Codex（AI 辅助，按组长要求） · 2026-11-20
 
 2026-11-25 补充（ya.liu，AI 辅助：Codex）：工作台设置页已加入固定 LLM/ASR/TTS 预设及独立语音会话，接入与验证边界见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。下文继续说明旧版独立接口及历史实测，不代表新固定方案已通过云端鉴权。

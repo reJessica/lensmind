@@ -37,7 +37,7 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
   }
   const originalTimeout = globalThis.setTimeout;
-  let attempts = 0, played = 0, fail = false, lastAudio;
+  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0;
   const ttsTexts = [];
   const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   Object.assign(globalThis, {
@@ -51,7 +51,14 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/device/calibration') return response({ required: false, ready: true });
       if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: 'IDLE', x: 0, y: 0 });
-      if (path === '/api/ai/analyze') return response({ summary: '可以使用柔和的侧光。', steps: [], observations: [], targets: [], settings: null });
+      if (path === '/api/device/move') { movementRequests++; return response({ connected: true, mode: 'MOCK', state: 'IDLE' }); }
+      if (path === '/api/ai/analyze') {
+        const motion = JSON.parse(options.body).prompt === '相机向左一点';
+        return response({ summary: '内部分析摘要，不应作为播报内容。', feedback: motion ? '已生成向左微调计划，等待控制端执行。' : '可以使用柔和的侧光。',
+          steps: [], observations: [], targets: [], settings: null,
+          controlPlan: { fileName: 'lensmind-plan-test.json', downloadUrl: '/api/ai/control-plans/test',
+            plan: { schemaVersion: 'lensmind.motion.v1', executed: false, actions: motion ? [{ type: 'MOVE', direction: 'LEFT', step: 1 }] : [] } } });
+      }
       if (path === '/api/ai/speech/tts') {
         attempts++; ttsTexts.push(JSON.parse(options.body).text);
         return fail ? response({ message: '上游负载已饱和' }, 503) : new Response(new Blob(['audio']), { headers: { 'Content-Type': 'audio/wav' } });
@@ -60,8 +67,8 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     },
   });
   const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(done => setImmediate(done)); };
-  const ask = async () => {
-    get('command-input').value = '灯光应该怎么布置？';
+  const ask = async (text = '灯光应该怎么布置？') => {
+    get('command-input').value = text;
     get('command-form').dispatchEvent(new Event('submit', { cancelable: true }));
     await settle();
   };
@@ -93,10 +100,16 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     get('settings-voice-enabled').dispatchEvent(new Event('change'));
     await ask();
     assert.equal(played, 3);
+    await ask('相机向左一点');
+    assert.equal(movementRequests, 0, '模型连接后机位调整仅生成计划，不能直接发起移动');
+    assert.match(get('ai-plan-json').textContent, /LEFT/);
+    assert.equal(get('ai-plan-json').textContent.includes('feedback'), false, '控制 JSON 不混入播报文本');
+    assert.equal(ttsTexts.at(-1), '已生成向左微调计划，等待控制端执行。');
+    assert.equal(get('ai-plan-download').href, '/api/ai/control-plans/test');
     globalThis.location.hash = '#gallery';
     win.dispatchEvent(new Event('hashchange'));
     await ask();
-    assert.equal(attempts, 4, '离开拍摄页不发起新播报');
+    assert.equal(attempts, 5, '离开拍摄页不发起新播报');
   } finally {
     win.dispatchEvent(new Event('pagehide'));
     await settle();

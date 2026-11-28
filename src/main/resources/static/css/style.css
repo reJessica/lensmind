@@ -499,3 +499,8 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 .command-clear:hover {
   background: #edf2e5;
 }
+
+.control-plan { margin-top: 12px; font-size: 13px; }
+.control-plan summary { cursor: pointer; }
+.control-plan pre { max-height: 240px; overflow: auto; padding: 12px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.control-plan a { display: inline-block; padding-block: 8px; }

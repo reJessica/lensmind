@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,12 +33,17 @@ class AiController {
     private static final Set<String> LOCAL_HOSTS = Set.of("127.0.0.1", "localhost", "::1", "[::1]");
     private final AiModelClient client;
     private final ObjectMapper mapper;
+    private final MotionPlanStore plans;
 
     private record Connected(String id, AiModelClient.Connection model) {}
 
     AiController(AiModelClient client, ObjectMapper mapper) {
-        this.client = client;
-        this.mapper = mapper;
+        this(client, mapper, null);
+    }
+
+    @Autowired
+    AiController(AiModelClient client, ObjectMapper mapper, MotionPlanStore plans) {
+        this.client = client; this.mapper = mapper; this.plans = plans;
     }
 
     @GetMapping("/session")
@@ -89,8 +96,26 @@ class AiController {
         String reference = input.path("reference").isMissingNode() ? null : validateImage(field(input, "reference"));
         if (scene == null && reference != null) throw new AiException(400, "对照参考图需要当前取景。");
         if (connected(request) != connection) throw new AiException(409, "模型连接已过期或变更，请确认后再试。");
-        return success(assistant ? client.assist(connection.model(), prompt, scene, reference)
-                : client.analyze(connection.model(), prompt, scene, reference));
+        var result = assistant ? client.assist(connection.model(), prompt, scene, reference)
+                : client.analyze(connection.model(), prompt, scene, reference);
+        if (connected(request) != connection) throw new AiException(409, "模型会话已变化，丢弃本次结果。");
+        if (plans == null) return success(result);
+        var document = plans.save(request.getSession().getId(), prompt, scene, result.actions());
+        var reply = new java.util.LinkedHashMap<String, Object>();
+        reply.put("summary", result.summary()); reply.put("feedback", result.feedback());
+        reply.put("observations", result.observations()); reply.put("targets", result.targets());
+        reply.put("steps", result.steps()); reply.put("settings", result.settings());
+        reply.put("controlPlan", document);
+        return success(reply);
+    }
+
+    @GetMapping("/control-plans/{id}") ResponseEntity<byte[]> downloadPlan(@PathVariable String id, HttpServletRequest request) {
+        requireLocal(request);
+        if (plans == null || request.getSession(false) == null || !id.matches("[a-f0-9-]{36}"))
+            throw new AiException(404, "未找到本次会话的机械臂计划。");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.APPLICATION_JSON)
+                .header("Content-Disposition", "attachment; filename=\"lensmind-plan-" + id + ".json\"")
+                .body(plans.read(request.getSession().getId(), id));
     }
 
     @ExceptionHandler(AiException.class)

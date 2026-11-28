@@ -1098,15 +1098,15 @@ function receiveAdvice(result, { pose, applySettings, cropChanged, sceneChanged 
     ? (canApply ? applyAssistantSettings(result.settings, cropChanged) : '') : null;
   if (confirmation !== null) {
     const summary = confirmation ? `当前设置：${confirmation}。` : cropChanged ? '取景已手动调整，继续使用当前设置。' : '当前画幅和构图设置保持原样。';
-    if (canApply) voice.speak(summary);
+    if (canApply) voice.speak(result.feedback || summary);
     return summary;
   }
   if (!canApply || sceneChanged) return null;
-  const text = result.steps[0] || result.summary;
+  const text = result.feedback || result.steps[0] || result.summary;
   if (pose && !state.guidePending) showGuide(text, true);
-  else if (!state.guidePending) {
+  else if (!state.guidePending || result.feedback) {
     const hint = /(?:现在|可以|直接|开始)\s*拍(?:照|摄|了)/.test(result.summary) ? currentPositionHint() : '';
-    voice.speak(hint || result.summary);
+    voice.speak(result.feedback || hint || result.summary);
   }
   return null;
 }
@@ -1126,14 +1126,14 @@ function zoomCrop(delta) {
 function runCommand(text, source) {
   if (state.page !== 'studio' || !text.trim()) return;
   syncVoicePreference();
-  if (source === 'voice' && state.wristCamera) {
+  if (source === 'voice' && state.wristCamera && !ai.connected) {
     const direction = spokenYawDirection(text);
     if (direction) return move(direction, source);
   }
   const command = parseCommand(text, { depthMovement: Boolean(state.device?.so101 || state.wristCamera) });
   const directShutter = isSpokenShutter(text) && (command.type === 'CAPTURE' || command.type === 'RETAKE');
   const question = /[?？]|怎么|如何|能不能|为什么|什么时候|什么样|是什么/.test(text);
-  const directControl = directShutter || command.type === 'GUIDE_DONE' || (!question && ['STOP', 'MOVE', 'HOME', 'CAMERA_DISTANCE'].includes(command.type));
+  const directControl = directShutter || command.type === 'GUIDE_DONE' || (!question && (command.type === 'STOP' || !ai.connected && ['MOVE', 'HOME', 'CAMERA_DISTANCE'].includes(command.type)));
   if (directControl) return executeCommand(command, text, source);
   const localRequest = !question && !isAiCommand(text, command.type) && ['POSITION_PEOPLE', 'POSITION_BODY',
     'POSITION_HEAD', 'POSITION_SELECTED', 'SELECT_PERSON', 'CLEAR_HEAD_TARGET', 'ZOOM', 'COMPOSE', 'RATIO'].includes(command.type);
