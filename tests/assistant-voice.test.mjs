@@ -31,6 +31,7 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
     getContext() { return { canvas: this, clearRect() {}, drawImage() {}, fillRect() {} }; }
     toBlob(callback) { callback(new Blob(['test.jpeg'])); }
     toDataURL() { return 'data:image/jpeg;base64,dGVzdA=='; }
+    async play() { this.readyState = 2; this.videoWidth = 1280; this.videoHeight = 720; this.currentTime = 0; }
   }
   const html = await readFile(new URL('../src/main/resources/static/index.html', import.meta.url), 'utf8');
   const elements = new Map([...html.matchAll(/\bid="([^"]+)"/g)].map(([, id]) => [id, new Element()]));
@@ -42,12 +43,16 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
   const win = Object.assign(new EventTarget(), { scrollTo() {} });
   const saved = new Map();
   for (const name of ['document', 'window', 'location', 'Image', 'Option', 'Audio', 'fetch', 'setInterval',
-    'setTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'createImageBitmap']) {
+    'setTimeout', 'requestAnimationFrame', 'cancelAnimationFrame', 'createImageBitmap', 'navigator']) {
     saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
   }
+  const track = Object.assign(new EventTarget(), { stop() {} });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) } } });
   const originalTimeout = globalThis.setTimeout;
   let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0;
   let visionTick, planRequest, visionBox, legacyBackend = false;
+  let deviceState = 'IDLE', offline = false, holdSpeech = false, releaseSpeech, ttsSignal;
+  const statusPolls = [];
   const plan = { ratio: '1:1', framing: 'half', composition: null, cells: [4, 5, 7, 8],
     personBox: { x: .51, y: .4, width: .44, height: .55 }, poseTip: '模仿示例姿势，放松肩膀。' };
   const ttsTexts = [];
@@ -56,7 +61,11 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
     document: doc, window: win, location: { hash: '#studio' },
     Image: class {}, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     Audio: class { constructor() { lastAudio = this; } pause() {} async play() { played++; } },
-    setInterval: (tick, ms) => { if (ms === 250) visionTick = tick; return 0; },
+    setInterval: (tick, ms) => {
+      if (ms === 250) visionTick = tick;
+      if (ms === 4000) statusPolls.push(tick);
+      return 0;
+    },
     requestAnimationFrame: () => 0, cancelAnimationFrame() {},
     createImageBitmap: async () => ({ width: 800, height: 800, close() {} }),
     setTimeout: (...args) => { const timer = originalTimeout(...args); timer.unref(); return timer; },
@@ -65,7 +74,7 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
         expiresAt: new Date(Date.now() + 600000).toISOString(), ...(legacyBackend ? {} : { referencePlan: true }) });
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/device/calibration') return response({ required: false, ready: true });
-      if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: 'IDLE', x: 0, y: 0 });
+      if (path === '/api/device/status') return offline ? response({ message: '控制服务未连接' }, 503) : response({ connected: true, mode: 'MOCK', state: deviceState, x: 0, y: 0 });
       if (path === '/api/device/move') { movementRequests++; return response({ connected: true, mode: 'MOCK', state: 'IDLE' }); }
       if (path.startsWith('/api/vision/person?')) {
         const query = new URLSearchParams(path.split('?')[1]);
@@ -83,6 +92,7 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
       }
       if (path === '/api/ai/speech/tts') {
         attempts++; ttsTexts.push(JSON.parse(options.body).text);
+        if (holdSpeech) { ttsSignal = options.signal; return new Promise(done => { releaseSpeech = () => done(new Response(new Blob(['audio']), { headers: { 'Content-Type': 'audio/wav' } })); }); }
         return fail ? response({ message: '上游负载已饱和' }, 503) : new Response(new Blob(['audio']), { headers: { 'Content-Type': 'audio/wav' } });
       }
       throw Error(`未预期的请求 ${path}`);
@@ -131,18 +141,7 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
     lastAudio.onended();
 
     await t.test('参考图一键应用画幅、半身和四格，进入站位框后播报姿势', async () => {
-      const originalDevices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices');
-      const media = { getUserMedia: async () => ({ getVideoTracks: () => [], getTracks: () => [] }) };
       const video = get('camera-video');
-      Object.assign(video, { videoWidth: 1280, videoHeight: 720, currentTime: 0, readyState: 2, play: async () => {} });
-      Object.defineProperty(navigator, 'mediaDevices', { value: media, configurable: true });
-      try {
-        get('camera-retry').dispatchEvent(new Event('click'));
-        await settle();
-      } finally {
-        if (originalDevices) Object.defineProperty(navigator, 'mediaDevices', originalDevices);
-        else delete navigator.mediaDevices;
-      }
       assert.equal(get('camera-placeholder').hidden, true);
       const originalCrop = get('live-crop').style.width;
       get('ai-reference-file').files = [{ name: 'pose.png', type: 'image/png', size: 400 }];
@@ -172,6 +171,7 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
       get('ai-apply-reference').dispatchEvent(new Event('click'));
       await settle();
       assert.equal(get('reference-person-frame').hidden, false);
+      assert.equal(get('capture-button').disabled, true, '参考图指导等待人物进入站位框');
       assert.equal(get('person-target-area').children.length, 4);
       assert.equal(attempts, startedAt + 1);
       assert.match(ttsTexts.at(-1), /对准虚线人物框/);
@@ -196,12 +196,42 @@ test('摄影助手朗读文字回答与参考图指导，离开拍摄页后停�
         assert.equal(get('reference-person-frame').firstElementChild.textContent, '站位已对齐');
         assert.equal(ttsTexts.at(-1), plan.poseTip);
         assert.equal(get('guide-done').hidden, false);
+        assert.equal(get('capture-button').disabled, true, '参考图指导等待确认当前动作');
         get('ai-remove-reference').dispatchEvent(new Event('click'));
         assert.equal(get('reference-person-frame').hidden, true);
         assert.equal(get('guide-done').hidden, true);
-      } finally { time.mock.restore(); }
+      } finally {
+        time.mock.restore();
+        visionBox = undefined;
+      }
     });
 
+    get('settings-delay').value = '0';
+    get('settings-delay').dispatchEvent(new Event('change'));
+    assert.equal(get('capture-button').disabled, false, `人物检测加载时快门可用：${get('capture-hint').textContent} / ${get('camera-status').textContent}`);
+    await ask('给我动作建议');
+    assert.equal(get('guide-done').hidden, false);
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '01', '指导未完成且没有人物检测结果时，说拍摄也应成片');
+    assert.equal(get('guide-done').hidden, true, '拍摄会结束当前动作指导');
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '02', '无需等人物完整入镜即可继续拍摄');
+    deviceState = 'MOVING';
+    await ask('拍摄');
+    assert.equal(get('gallery-count').textContent, '02', '控制端运动状态仍应拦截');
+    deviceState = 'IDLE'; offline = true; holdSpeech = true;
+    const beforeOffline = played;
+    await ask();
+    assert.equal(get('voice-status').textContent, '正在合成语音…');
+    await statusPolls[0](); await settle();
+    assert.equal(ttsSignal.aborted, false, '控制服务断连不能取消正在合成的回答');
+    releaseSpeech(); await settle();
+    assert.equal(played, beforeOffline + 1, '设备断连时云端晚到音频仍应播放');
+    lastAudio.onended();
+    offline = false; holdSpeech = false; deviceState = 'STOPPED';
+    await statusPolls[0](); await settle();
+    await ask();
+    assert.equal(played, beforeOffline + 2, '机械臂停止锁定不应禁止后续主动提问的朗读');
     const beforeLeaving = attempts;
     globalThis.location.hash = '#gallery';
     win.dispatchEvent(new Event('hashchange'));
