@@ -12,3 +12,9 @@ export const MODEL_PRESETS = Object.freeze({
   siliconflow: { url: 'https://api.siliconflow.cn/v1', model: '' },
 });
 export const LLM_PROFILES = Object.freeze({ recommended: MODEL_PRESETS.dashscope, existing: MODEL_PRESETS.apihy, campus: MODEL_PRESETS.sjtu });
+export const SPEECH_PROFILES = Object.freeze({
+  uniapi: { label: 'UniAPI', asr: 'whisper-1', tts: 'gemini-3.8-flash-lite-tts', voice: 'Kore', workspace: false },
+  dashscope: { label: '百炼北京', asr: FIXED_MODELS.asr, tts: FIXED_MODELS.tts, voice: FIXED_MODELS.voice, workspace: true },
+});
+export function isCloudAsr(model) { return Object.values(SPEECH_PROFILES).some(profile => profile.asr === model); }
+export function isCloudTts(model) { return model === 'tts-1' || Object.values(SPEECH_PROFILES).some(profile => profile.tts === model); }

@@ -7,7 +7,7 @@ import { isAiCommand, setupAi } from './ai.js';
 import { createSpeechInput, createVoiceGuide } from './voice.js';
 import { setupSettings } from './settings.js';
 import { setupCloudSpeech, createCloudSpeechInput, routeSpeechInput } from './cloud-speech.js';
-import { FIXED_MODELS } from './model-presets.js';
+import { isCloudTts } from './model-presets.js';
 
 const $ = id => document.getElementById(id);
 const preview = $('preview');
@@ -49,14 +49,27 @@ const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers });
 const speech = routeSpeechInput(browserSpeech, cloudSpeech);
 const voice = createVoiceGuide({
   synthesis: window.speechSynthesis, Utterance: window.SpeechSynthesisUtterance,
-  useCloud: () => $('settings-tts-model').value === FIXED_MODELS.tts,
+  useCloud: () => isCloudTts($('settings-tts-model').value),
   synthesize: cloud.synthesize,
   onError: error => setVoiceEnabled(false, error?.message || '语音播报不可用，可以查看文字提示或稍后重试。'),
   onPlayback: speech.playback,
+  onStatus: (phase, message) => {
+    const busy = phase === 'loading' || phase === 'playing';
+    $('settings-voice-preview').textContent = busy ? '取消试听' : '试听播报';
+    $('settings-voice-preview').setAttribute('aria-busy', String(busy));
+    const cloudTts = isCloudTts($('settings-tts-model').value);
+    const messages = {
+      loading: cloudTts ? '正在请求云端合成，可能需要等待约 60 秒；可点击取消，请勿重复提交。' : '正在启动浏览器播报…',
+      playing: '正在播放；如听不到声音，请检查系统音量、标签页静音和音频输出设备。',
+      ended: '播报已结束。', cancelled: '已取消等待或播放；已发送的云端请求仍可能计费。',
+    };
+    $('settings-voice-preview-status').textContent = phase === 'error' ? `试听失败：${message}` : messages[phase] || '';
+  },
 });
 const settings = setupSettings({
   onChange: applyPreferences,
   onPreviewVoice: () => {
+    if (voice.busy) { voice.cancel(); return; }
     setVoiceEnabled(true);
     voice.speak('你好，我是灵眸。请看向镜头，放松肩膀。');
   },
@@ -1206,8 +1219,6 @@ document.addEventListener('keydown', event => {
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
-  ai.clearKey();
-  cloud.clearKey();
   cancelCapture();
   const hadHandsFree = speech.handsFree;
   speech.stop(hadHandsFree ? '切到后台时已关闭语音。' : '');

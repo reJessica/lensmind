@@ -1,7 +1,7 @@
 const LIVE_CONFIRM_MS = 650;
 const LIVE_INTERVAL_MS = 2800;
 
-export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = () => {}, useCloud = () => false, synthesize }) {
+export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = () => {}, onStatus = () => {}, useCloud = () => false, synthesize }) {
   const available = () => useCloud() ? Boolean(synthesize) : Boolean(synthesis && Utterance);
   let enabled = false;
   let rate = 1;
@@ -21,7 +21,8 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
       previous.controller.abort(); previous.audio?.pause();
       if (previous.url) URL.revokeObjectURL(previous.url);
     } else synthesis.cancel();
-    onPlayback(false);
+    if (!previous.controller || previous.playing) onPlayback(false);
+    onStatus('cancelled');
   }
 
   function reset() {
@@ -33,24 +34,38 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   function speak(text) {
     if (!enabled || !text) return false;
     cancel();
+    if (volume === 0) {
+      onStatus('error', '播报音量为 0，请先调高音量再试听。');
+      return false;
+    }
     if (useCloud()) {
       const message = active = { controller: new AbortController() };
-      onPlayback(true);
+      onStatus('loading');
       const finish = () => {
         if (active !== message) return false;
         active = null;
         if (message.url) URL.revokeObjectURL(message.url);
-        onPlayback(false); return true;
+        if (message.playing) onPlayback(false); return true;
       };
       Promise.resolve().then(() => synthesize(text, rate, message.controller.signal)).then(blob => {
         if (active !== message) return;
         message.url = URL.createObjectURL(blob);
         const audio = message.audio = new Audio(message.url);
         audio.volume = volume;
-        audio.onended = finish;
-        audio.onerror = () => { if (finish()) onError(new Error('云端音频播放失败，请重试。')); };
-        return audio.play();
-      }).catch(error => { if (finish() && error.name !== 'AbortError') onError(error); });
+        audio.onended = () => { if (finish()) onStatus('ended'); };
+        audio.onerror = () => {
+          if (finish()) {
+            const error = new Error('云端音频播放失败，请检查音频输出后重试。');
+            onStatus('error', error.message); onError(error);
+          }
+        };
+        message.playing = true; onPlayback(true);
+        return audio.play().then(() => { if (active === message) onStatus('playing'); });
+      }).catch(error => {
+        if (!finish() || error.name === 'AbortError') return;
+        if (error.name === 'NotAllowedError') error = new Error('浏览器阻止了音频播放，请允许本站播放声音后再点击试听。');
+        onStatus('error', error.message); onError(error);
+      });
       return true;
     }
     const message = new Utterance(text);
@@ -64,16 +79,19 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
       onPlayback(false);
       return true;
     }
-    message.onend = finish;
+    message.onstart = () => { if (active === message) onStatus('playing'); };
+    message.onend = () => { if (finish()) onStatus('ended'); };
     message.onerror = () => {
-      if (finish()) onError();
+      if (finish()) { onStatus('error', '浏览器语音播报失败，请检查系统语音与音频输出。'); onError(); }
     };
     onPlayback(true);
+    onStatus('loading');
     try {
       synthesis.speak(message);
       return true;
     } catch {
       finish();
+      onStatus('error', '浏览器语音播报无法启动。');
       onError();
       return false;
     }
@@ -82,6 +100,7 @@ export function createVoiceGuide({ synthesis, Utterance, onError, onPlayback = (
   return {
     get available() { return available(); },
     get enabled() { return enabled; },
+    get busy() { return active !== null; },
     setEnabled(value) { enabled = available() && value; reset(); },
     configure(options) {
       if (Number.isFinite(options.rate)) rate = Math.min(2, Math.max(.5, options.rate));

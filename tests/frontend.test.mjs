@@ -6,7 +6,7 @@ import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resour
 import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
 import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 import { DEFAULT_PREFERENCES, normalizePreferences, readPreferences, savePreferences } from '../src/main/resources/static/js/settings.js';
-import { FIXED_MODELS, LLM_PROFILES } from '../src/main/resources/static/js/model-presets.js';
+import { FIXED_MODELS, LLM_PROFILES, SPEECH_PROFILES, isCloudAsr, isCloudTts } from '../src/main/resources/static/js/model-presets.js';
 import { createUtteranceBuffer, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
 
 test('固定模型预设和旧配置迁移保留正确服务商，不接受未知语音模型', () => {
@@ -16,12 +16,63 @@ test('固定模型预设和旧配置迁移保留正确服务商，不接受未�
   assert.equal(FIXED_MODELS.voice, 'longanhuan_v3.1');
   const old = normalizePreferences({ modelBaseUrl: 'https://zgc.apihy.com/v1', modelName: 'qwen3.5-27b' });
   assert.equal(old.llmProfile, 'existing');
-  assert.equal(old.asrModel, 'browser');
-  const pinned = normalizePreferences({ asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts, apiKey: 'fake-secret' });
+  assert.equal(old.asrModel, SPEECH_PROFILES.uniapi.asr);
+  const pinned = normalizePreferences({ voiceProvider: 'dashscope', speechDefaultsVersion: 3, asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts, apiKey: 'fake-secret' });
   assert.equal(pinned.asrModel, FIXED_MODELS.asr);
   assert.equal(pinned.ttsModel, FIXED_MODELS.tts);
-  assert.equal(normalizePreferences({ asrModel: 'unknown', ttsModel: 'unknown' }).asrModel, 'browser');
+  assert.equal(normalizePreferences({ asrModel: 'unknown', ttsModel: 'unknown' }).asrModel, SPEECH_PROFILES.uniapi.asr);
   assert.equal(JSON.stringify(pinned).includes('fake-secret'), false);
+});
+
+test('首次加载、旧浏览器默认值和恢复默认使用云端，后续手选浏览器会保留', () => {
+  assert.equal(DEFAULT_PREFERENCES.asrModel, SPEECH_PROFILES.uniapi.asr);
+  assert.equal(DEFAULT_PREFERENCES.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  assert.deepEqual(readPreferences({ getItem() { return null; } }), DEFAULT_PREFERENCES);
+  const old = { asrModel: 'browser', ttsModel: 'browser', grid: false, cloudWorkspace: 'workspace-123' };
+  const migrated = readPreferences({ getItem() { return JSON.stringify(old); } });
+  assert.equal(migrated.asrModel, SPEECH_PROFILES.uniapi.asr);
+  assert.equal(migrated.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  assert.equal(migrated.grid, false);
+  assert.equal(migrated.cloudWorkspace, 'workspace-123');
+  assert.equal(migrated.speechDefaultsVersion, 4);
+  let saved;
+  const storage = { setItem(key, value) { saved = value; }, getItem() { return saved; } };
+  savePreferences(storage, { ...migrated, asrModel: 'browser', ttsModel: 'browser' });
+  assert.equal(readPreferences(storage).asrModel, 'browser');
+  assert.equal(readPreferences(storage).ttsModel, 'browser');
+  savePreferences(storage, { ...DEFAULT_PREFERENCES });
+  assert.equal(readPreferences(storage).asrModel, SPEECH_PROFILES.uniapi.asr);
+  assert.equal(readPreferences(storage).ttsModel, SPEECH_PROFILES.uniapi.tts);
+});
+
+test('语音默认迁移至 UniAPI，百炼仅在新版手选时保留，两套云端模型都走后端', () => {
+  const old = normalizePreferences({ speechDefaultsVersion: 2, asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts });
+  assert.equal(old.voiceProvider, 'uniapi');
+  assert.equal(old.asrModel, 'whisper-1'); assert.equal(old.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  const selected = normalizePreferences({ ...DEFAULT_PREFERENCES, voiceProvider: 'dashscope', asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts });
+  assert.equal(selected.voiceProvider, 'dashscope'); assert.equal(selected.asrModel, FIXED_MODELS.asr);
+  for (const profile of Object.values(SPEECH_PROFILES)) { assert.equal(isCloudAsr(profile.asr), true); assert.equal(isCloudTts(profile.tts), true); }
+  assert.equal(isCloudAsr('browser'), false); assert.equal(isCloudTts('unknown'), false);
+});
+
+test('LLM 默认汇云，迁移旧版百炼默认配置，保留后续手选和其他服务商', () => {
+  assert.equal(DEFAULT_PREFERENCES.modelBaseUrl, 'https://zgc.apihy.com/v1');
+  assert.equal(DEFAULT_PREFERENCES.modelName, 'qwen3.5-27b');
+  assert.equal(DEFAULT_PREFERENCES.llmProfile, 'existing');
+  const old = { modelBaseUrl: LLM_PROFILES.recommended.url, modelName: FIXED_MODELS.llm, llmProfile: 'recommended' };
+  assert.equal(normalizePreferences(old).modelBaseUrl, DEFAULT_PREFERENCES.modelBaseUrl);
+  assert.equal(normalizePreferences({ ...old, modelDefaultsVersion: 2 }).modelName, FIXED_MODELS.llm);
+  assert.equal(normalizePreferences({ ...old, llmProfile: 'custom' }).modelName, FIXED_MODELS.llm);
+  assert.equal(normalizePreferences({ modelBaseUrl: LLM_PROFILES.campus.url, modelName: 'qwen' }).llmProfile, 'campus');
+});
+
+test('Gemini TTS 迁移旧默认且保留新版手选备用模型和浏览器', () => {
+  assert.equal(DEFAULT_PREFERENCES.ttsModel, 'gemini-3.8-flash-lite-tts');
+  assert.equal(normalizePreferences({ voiceProvider: 'uniapi', speechDefaultsVersion: 3, ttsModel: 'tts-1' }).ttsModel, 'gemini-3.8-flash-lite-tts');
+  assert.equal(normalizePreferences({ voiceProvider: 'uniapi', speechDefaultsVersion: 4, ttsModel: 'tts-1' }).ttsModel, 'tts-1');
+  assert.equal(normalizePreferences({ speechDefaultsVersion: 4, ttsModel: 'browser' }).ttsModel, 'browser');
+  assert.equal(isCloudTts('gemini-3.8-flash-lite-tts'), true);
+  assert.equal(isCloudTts('tts-1'), true);
 });
 
 test('云端录音先检测短句，静音和短噪声不上传，长句限制在十秒左右', () => {
@@ -582,17 +633,88 @@ test('取消云端合成后丢弃晚到的音频，不转为浏览器播报', as
   assert.equal(signal.aborted, true);
   resolve(new Blob(['not-played']));
   await Promise.resolve(); await Promise.resolve();
-  assert.deepEqual(playback, [true, false]);
+  assert.deepEqual(playback, [], '等待 TTS 合成和取消未播放音频均不应暂停 ASR');
 });
 
 test('云端合成失败明确报错，不伪造音频或自动切换模型', async () => {
-  const errors = [], playback = [];
+  const errors = [], playback = [], status = [];
   const voice = createVoiceGuide({ useCloud: () => true, synthesize: async () => { throw Error('语音配置已过期'); },
+    onStatus: (phase, message) => status.push([phase, message]),
     onError: error => errors.push(error.message), onPlayback: value => playback.push(value) });
   voice.setEnabled(true); voice.speak('测试');
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(errors, ['语音配置已过期']);
-  assert.deepEqual(playback, [true, false]);
+  assert.deepEqual(playback, [], 'TTS 失败不能中断 ASR 收听');
+  assert.deepEqual(status, [['loading', undefined], ['error', '语音配置已过期']]);
+  assert.equal(voice.busy, false);
+});
+
+test('等待合成时立即报告状态，取消后不播放晚到音频', async () => {
+  const status = [];
+  let resolve;
+  const voice = createVoiceGuide({ useCloud: () => true,
+    synthesize: () => new Promise(done => { resolve = done; }), onError: assert.fail,
+    onStatus: phase => status.push(phase) });
+  voice.setEnabled(true); voice.speak('试听');
+  assert.equal(voice.busy, true);
+  assert.deepEqual(status, ['loading']);
+  await Promise.resolve();
+  voice.cancel(); resolve(new Blob(['ignored']));
+  await new Promise(done => setImmediate(done));
+  assert.equal(voice.busy, false);
+  assert.deepEqual(status, ['loading', 'cancelled']);
+});
+
+test('Whisper 繁体快门口令可以直接拍照，否定口令和停止保持正确优先级', () => {
+  for (const text of ['請拍照', '請拍攝。', '幫我拍一張照片']) {
+    assert.equal(isSpokenShutter(text), true);
+    assert.equal(parseCommand(text).type, 'CAPTURE');
+  }
+  assert.equal(parseCommand('請勿拍攝').type, 'CLARIFY');
+  assert.equal(parseCommand('別拍照').type, 'CLARIFY');
+  assert.equal(isSpokenShutter('別拍照'), false);
+  assert.equal(parseCommand('別動').type, 'STOP');
+});
+
+test('音量为零给出提示，避免消耗云端调用后静音', () => {
+  const status = [];
+  const voice = createVoiceGuide({ useCloud: () => true, synthesize: assert.fail, onError: assert.fail,
+    onStatus: (phase, message) => status.push([phase, message]) });
+  voice.setEnabled(true); voice.configure({ volume: 0 });
+  assert.equal(voice.speak('试听'), false);
+  assert.equal(status[0][0], 'error');
+  assert.match(status[0][1], /音量为 0/);
+  assert.equal(voice.busy, false);
+});
+
+test('真实播放开始和结束才报告相应状态，浏览器阻止播放时保留原因', async () => {
+  const original = globalThis.Audio, status = [], errors = [];
+  let audio, rejectPlayback = false;
+  globalThis.Audio = class {
+    constructor() { audio = this; }
+    pause() {}
+    play() { return rejectPlayback ? Promise.reject(new DOMException('blocked', 'NotAllowedError')) : Promise.resolve(); }
+  };
+  const voice = createVoiceGuide({ useCloud: () => true, synthesize: async () => new Blob(['test']),
+    onError: error => errors.push(error.message), onStatus: (phase, message) => status.push([phase, message]) });
+  try {
+    voice.setEnabled(true); voice.speak('试听');
+    await new Promise(done => setImmediate(done));
+    assert.deepEqual(status.map(item => item[0]), ['loading', 'playing']);
+    audio.onended();
+    assert.equal(voice.busy, false);
+    assert.equal(status.at(-1)[0], 'ended');
+    rejectPlayback = true; voice.speak('再次试听');
+    await new Promise(done => setImmediate(done));
+    assert.equal(status.at(-1)[0], 'error');
+    assert.match(status.at(-1)[1], /浏览器阻止/);
+    assert.match(errors[0], /允许本站播放声音/);
+    assert.equal(voice.busy, false);
+  } finally {
+    voice.cancel();
+    if (original === undefined) delete globalThis.Audio;
+    else globalThis.Audio = original;
+  }
 });
 
 test('三维机位支持前后、上下和俯仰，混合方向指令需要先明确一步', () => {

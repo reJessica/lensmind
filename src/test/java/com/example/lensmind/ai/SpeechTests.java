@@ -25,6 +25,96 @@ class SpeechTests {
         return new AiProperties(AiProperties.Mode.MOCK, budget, 3, null, null, null, "", "", "", false, false);
     }
 
+    @Test void geminiSessionUsesNativeEndpointAndSharesBudget() {
+        var provider = mock(ProviderClient.class);
+        var budget = new LiveCallBudget(properties(1));
+        var controller = new SpeechController(mock(DashScopeSpeechClient.class), provider, budget, "fake-key");
+        var request = request();
+        var body = (Map<?, ?>) controller.configure(new SpeechController.Configure("whisper-1", SpeechController.GEMINI_TTS, "", "", "uniapi"), request).getBody();
+        assertEquals("Kore", body.get("voice"));
+        when(provider.geminiSpeech(any(), anyString(), anyDouble())).thenAnswer(call -> {
+            var endpoint = (AiProperties.Endpoint) call.getArgument(0);
+            assertEquals("https://api.uniapi.io/gemini/v1beta/models/gemini-3.8-flash-lite-tts:generateContent", endpoint.url());
+            assertEquals("fake-key", endpoint.apiKey());
+            return MediaInput.mockTone();
+        });
+        var input = new SpeechController.Synthesis(body.get("id").toString(), "请拍照", 1);
+        assertEquals("audio/wav", controller.synthesize(input, request).getHeaders().getContentType().toString());
+        assertEquals(1, budget.used());
+        assertThrows(AiException.class, () -> controller.synthesize(input, request));
+        verify(provider, times(1)).geminiSpeech(any(), anyString(), anyDouble());
+        verify(provider, never()).post(any(), anyMap(), anyString(), anyInt());
+    }
+
+    @Test void geminiNativeProtocolSendsOnlyGoogleKeyAndRejectsNonAudioJson() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        byte[] tone = MediaInput.mockTone();
+        byte[] reply = mapper.writeValueAsBytes(Map.of("candidates", java.util.List.of(Map.of("content", Map.of("parts", java.util.List.of(Map.of("inlineData", Map.of("mimeType", "audio/wav", "data", java.util.Base64.getEncoder().encodeToString(tone)))))))));
+        var headers = new java.util.concurrent.atomic.AtomicReference<com.sun.net.httpserver.Headers>();
+        var body = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/gemini", exchange -> {
+            headers.set(exchange.getRequestHeaders()); body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(200, reply.length); exchange.getResponseBody().write(reply); exchange.close();
+        });
+        server.start();
+        try {
+            var client = new ProviderClient(properties(1), mapper);
+            var endpoint = new AiProperties.Endpoint("http://127.0.0.1:" + server.getAddress().getPort() + "/gemini", SpeechController.GEMINI_TTS, "fake-key");
+            assertArrayEquals(tone, client.geminiSpeech(endpoint, "请拍照", 1));
+            assertEquals("fake-key", headers.get().getFirst("x-goog-api-key"));
+            assertNull(headers.get().getFirst("Authorization"));
+            var json = mapper.readTree(body.get());
+            assertEquals("请拍照", json.path("contents").path(0).path("parts").path(0).path("text").asString());
+            assertEquals("Kore", json.path("generationConfig").path("speechConfig").path("voiceConfig").path("prebuiltVoiceConfig").path("voiceName").asString());
+            assertThrows(AiException.class, () -> client.geminiWav("{\"error\":\"fake-key\"}".getBytes(StandardCharsets.UTF_8)));
+            byte[] invalid = new String(reply, StandardCharsets.UTF_8).replace("audio/wav", "text/plain").getBytes(StandardCharsets.UTF_8);
+            assertThrows(AiException.class, () -> client.geminiWav(invalid));
+        } finally { server.stop(0); }
+    }
+
+    @Test void uniapiUsesExistingLocalKeyAndFixedAudioEndpointsWithoutWorkspaceOrDashscope() throws Exception {
+        var dashscope = mock(DashScopeSpeechClient.class);
+        var provider = mock(ProviderClient.class);
+        var budget = new LiveCallBudget(properties(8));
+        var controller = new SpeechController(dashscope, provider, budget, "fake-local-uniapi-key");
+        var request = request();
+        var body = (Map<?, ?>) controller.configure(new SpeechController.Configure("whisper-1", "tts-1", "", "", "uniapi"), request).getBody();
+        assertEquals("uniapi", body.get("provider")); assertEquals("", body.get("workspace")); assertEquals("alloy", body.get("voice"));
+        assertFalse(body.toString().contains("fake-local-uniapi-key"));
+        when(provider.transcribeMultipart(any(), any())).thenAnswer(call -> {
+            var endpoint = (AiProperties.Endpoint) call.getArgument(0);
+            assertEquals("https://api.uniapi.io/v1/audio/transcriptions", endpoint.url());
+            assertEquals("whisper-1", endpoint.model()); assertEquals("fake-local-uniapi-key", endpoint.apiKey());
+            return mapper.readTree("{\"text\":\"拍照\"}");
+        });
+        when(provider.post(any(), anyMap(), anyString(), anyInt())).thenAnswer(call -> {
+            var endpoint = (AiProperties.Endpoint) call.getArgument(0);
+            assertEquals("https://api.uniapi.io/v1/audio/speech", endpoint.url());
+            Map<?, ?> payload = call.getArgument(1);
+            assertEquals("tts-1", payload.get("model")); assertEquals("alloy", payload.get("voice"));
+            return new ProviderClient.Reply(MediaInput.mockTone(), "audio/wav");
+        });
+        String id = body.get("id").toString();
+        var file = new MockMultipartFile("audio", "clip.wav", "audio/wav", MediaInput.mockTone());
+        assertEquals("拍照", ((Map<?, ?>) controller.transcribe(id, file, request).getBody()).get("text"));
+        var audio = controller.synthesize(new SpeechController.Synthesis(id, "请看镜头", 1), request);
+        assertEquals("audio/wav", audio.getHeaders().getContentType().toString());
+        assertEquals(2, budget.used()); verifyNoInteractions(dashscope);
+    }
+
+    @Test void uniapiCredentialsCannotBeReusedForDashscopeOrMixedModels() {
+        var provider = mock(ProviderClient.class);
+        var controller = new SpeechController(mock(DashScopeSpeechClient.class), provider, new LiveCallBudget(properties(8)), "fake-local-key");
+        var request = request();
+        controller.configure(new SpeechController.Configure("whisper-1", "tts-1", "", "", "uniapi"), request);
+        assertThrows(AiException.class, () -> controller.configure(new SpeechController.Configure(SpeechController.ASR, SpeechController.TTS, "workspace-123", "", "dashscope"), request));
+        assertThrows(AiException.class, () -> controller.configure(new SpeechController.Configure("whisper-1", SpeechController.TTS, "", "dummy", "uniapi"), request));
+        assertThrows(AiException.class, () -> SpeechController.audioType("{\"error\":\"fake-secret\"}".getBytes(StandardCharsets.UTF_8)));
+        controller.disconnect(request);
+        assertEquals(true, ((Map<?, ?>) controller.status(request).getBody()).get("localUniapiKeyConfigured"));
+        verifyNoInteractions(provider);
+    }
+
     @Test void savingIsLocalOnlyAndCannotSelectArbitraryModelsOrDestinations() {
         var client = mock(DashScopeSpeechClient.class);
         var controller = new SpeechController(client);

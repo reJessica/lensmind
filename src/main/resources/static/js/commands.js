@@ -11,7 +11,10 @@ const FRAMING_SUFFIX = /(?:的)?(?:半身|全身)(?:人像)?(?:照片|照)?$/;
 const PHOTO_SUFFIX = /的?(?:照片|人像照?|照)$/;
 const REFERENCES = /人物(\d+|[一二两三四五六七八九])号?|第(\d+|[一二两三四五六七八九])个人|(\d+|[一二两三四五六七八九])号人物/g;
 
-const normalize = text => text.trim().replace(/[，。！？!?,.\s]/g, '');
+// Whisper 可能返回繁体；仅归一化项目控制词，保留界面中的原始转写。
+export const normalizeCommandText = text => text.replace(/[請攝鏡頭機幫張開來從裡這個縮擴轉動聽語畫構圖體後復儲刪別繼續]/g,
+  char => ({ 請: '请', 攝: '摄', 鏡: '镜', 頭: '头', 機: '机', 幫: '帮', 張: '张', 開: '开', 來: '来', 從: '从', 裡: '里', 這: '这', 個: '个', 縮: '缩', 擴: '扩', 轉: '转', 動: '动', 聽: '听', 語: '语', 畫: '画', 構: '构', 圖: '图', 體: '体', 後: '后', 復: '复', 儲: '储', 刪: '删', 別: '别', 繼: '继', 續: '续' })[char] || char);
+const normalize = text => normalizeCommandText(text).trim().replace(/[，。！？!?,.\s]/g, '');
 const SHUTTER = /^(?:(?:请|现在|开始|帮我|给我|来|准备好(?:了)?|好(?:了)?))*?(?:拍摄|拍照|拍(?:一)?张(?:照片)?|拍吧|开拍)(?:吧|了)?$/;
 
 export function isSpokenShutter(text) {

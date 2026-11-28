@@ -228,11 +228,11 @@
           <section class="preferences-card" aria-labelledby="model-settings-title">
             <div class="preferences-card-heading"><div><h2 id="model-settings-title">模型连接</h2><p>文字咨询与画面分析共用此连接。</p></div><span class="preferences-tag">多模态</span></div>
             <form id="ai-connect-form" autocomplete="off">
-              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="recommended">推荐 · Qwen3.5 Flash 固定快照</option><option value="existing">现有 · 汇云 Qwen3.5-27B</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select><p>预设锁定地址和模型；修改只填入表单，连接需手动确认。</p></div>
+              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="existing" selected>默认 · 汇云 Qwen3.5-27B</option><option value="recommended">百炼 · Qwen3.5 Flash 固定快照</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select><p>预设锁定地址和模型；修改只填入表单，连接需手动确认。</p></div>
               <div class="preferences-field" id="custom-provider-field" hidden><label for="ai-provider">API 服务商</label><select id="ai-provider"><option value="apihy">汇云 · 团队接口</option><option value="uniapi">UniAPI</option><option value="sjtu">上海交大 · 致远一号</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="siliconflow">硅基流动</option><option value="dashscope">阿里云百炼</option><option value="custom">自定义地址</option></select></div>
-              <div class="preferences-field"><label for="ai-base-url">API 基础地址</label><input type="url" id="ai-base-url" value="https://dashscope.aliyuncs.com/compatible-mode/v1" required maxlength="250" spellcheck="false" aria-describedby="api-url-hint"><p id="api-url-hint">使用 HTTPS 基础地址，例如以 /v1 结尾；无需填写 /models。</p></div>
-              <div class="preferences-field"><label for="ai-model">视觉模型名称</label><input type="text" id="ai-model" value="qwen3.5-flash-2026-02-23" required maxlength="120" spellcheck="false" placeholder="填写服务商已开通的视觉模型"></div>
-              <div class="preferences-field"><label for="ai-key">API 密钥</label><input type="password" id="ai-key" required autocomplete="new-password" maxlength="2048" spellcheck="false" placeholder="填写当前服务商的 Key" aria-describedby="api-key-hint"><p id="api-key-hint">提交后清空输入；密钥仅由本机服务临时保管，最多 30 分钟。</p></div>
+              <div class="preferences-field"><label for="ai-base-url">API 基础地址</label><input type="url" id="ai-base-url" value="https://zgc.apihy.com/v1" required maxlength="250" spellcheck="false" aria-describedby="api-url-hint"><p id="api-url-hint">汇云模型列表地址为 /v1/models；这里填写用于调用的基础地址 /v1。</p></div>
+              <div class="preferences-field"><label for="ai-model">视觉模型名称</label><input type="text" id="ai-model" value="qwen3.5-27b" required maxlength="120" spellcheck="false" placeholder="填写服务商已开通的视觉模型"></div>
+              <div class="preferences-field"><label for="ai-key">API 密钥</label><input type="password" id="ai-key" required autocomplete="new-password" maxlength="2048" spellcheck="false" placeholder="填写当前服务商的 Key" aria-describedby="api-key-hint"><p id="api-key-hint">点击连接后清空输入；是否成功请看下方状态。连接成功后可直接使用，密钥由本机临时保管最多 30 分钟。</p></div>
               <p class="preferences-notice">只有点击「测试并连接」才会验证新配置，并发送一张测试色块，可能产生少量费用。修改表单不会替换现有连接。</p>
               <div class="ai-actions"><button type="submit" id="ai-connect" class="flow-button flow-primary">测试并连接</button><button type="button" id="ai-disconnect" hidden>断开连接</button></div>
             </form>
@@ -241,15 +241,16 @@
           <section class="preferences-card" aria-labelledby="voice-settings-title">
             <div class="preferences-card-heading"><div><h2 id="voice-settings-title">语音与播报</h2><p>可分别选择识别和播报方式；麦克风仍在拍摄页手动开启。</p></div><span class="preferences-tag">固定模型</span></div>
             <form id="speech-config-form" autocomplete="off">
-              <div class="preferences-field"><label for="settings-asr-model">ASR · 语音识别</label><select id="settings-asr-model"><option value="browser">浏览器语音识别</option><option value="fun-asr-realtime-2026-02-28">百炼 Fun-ASR · 2026-02-28 固定快照</option></select></div>
-              <div class="preferences-field"><label for="settings-tts-model">TTS · 语音合成</label><select id="settings-tts-model"><option value="browser">浏览器语音播报</option><option value="qwen-audio-3.1-tts-flash">百炼 Qwen-Audio 3.1 TTS Flash</option></select><p>云端音色固定为 longanhuan_v3.1，模型不会自动升级或轮换。</p></div>
-              <div id="cloud-speech-fields" hidden>
-                <div class="preferences-field"><label for="speech-workspace">百炼北京地域 Workspace ID</label><input id="speech-workspace" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9-]{0,79}" spellcheck="false" placeholder="在百炼控制台查看业务空间 ID"></div>
-                <div class="preferences-field"><label for="speech-key">百炼北京地域 API Key</label><input id="speech-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false" placeholder="独立填写，不会使用汇云或 UniAPI 的密钥"><p>仅由后端临时保管 30 分钟。已有同一业务空间会话时，留空可沿用其密钥。</p></div>
+              <div class="preferences-field"><label for="speech-provider">语音服务商</label><select id="speech-provider"><option value="uniapi" selected>UniAPI · 使用已有账号（默认）</option><option value="dashscope">百炼官方 · 另需百炼账号</option></select></div>
+              <div class="preferences-field"><label for="settings-asr-model">ASR · 语音识别</label><select id="settings-asr-model"><option value="whisper-1" selected>UniAPI · whisper-1（固定）</option><option value="browser">浏览器语音识别（手动选择）</option></select></div>
+              <div class="preferences-field"><label for="settings-tts-model">TTS · 语音合成</label><select id="settings-tts-model"><option value="gemini-3.8-flash-lite-tts" selected>UniAPI · gemini-3.8-flash-lite-tts（固定）</option><option value="tts-1">UniAPI · tts-1（备用，曾上游满载）</option><option value="browser">浏览器语音播报（手动选择）</option></select><p id="speech-voice-note">云端音色固定为 Kore，模型不会自动切换。</p></div>
+              <div id="cloud-speech-fields">
+                <div class="preferences-field" id="speech-workspace-field" hidden><label for="speech-workspace">百炼北京地域 Workspace ID</label><input id="speech-workspace" disabled maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9-]{0,79}" spellcheck="false" placeholder="在百炼控制台查看业务空间 ID"></div>
+                <div class="preferences-field"><label for="speech-key" id="speech-key-label">UniAPI API Key</label><input id="speech-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false" placeholder="可留空读取已配置的本机 UniAPI Key"><p id="speech-key-hint">无需百炼账号或 Workspace ID；可读取本机已配置的 UniAPI Key，也可在这里单独填写。保存后清空输入，临时使用 30 分钟。</p></div>
               </div>
-              <p class="preferences-notice">保存配置不调用模型；启用云端后，录音和试听会发送至百炼并可能计费。首版断句后上传，合成完整短句后播放；浏览器与云端之间不自动回退。点击停止、离开拍摄页时取消等待与播放。</p>
+              <p class="preferences-notice">保存配置不调用模型；启用云端后，录音和试听发送至所选服务商并可能计费。模型列表中可见不代表通道可用，失败时显示原因。首版断句后上传，合成完整短句后播放；不自动回退浏览器。停止或离开拍摄页时取消等待与播放。</p>
               <div class="ai-actions"><button type="submit" id="speech-save">保存语音配置</button><button type="button" id="speech-disconnect" hidden>清除云端语音会话</button></div>
-              <p id="speech-session-status" class="preferences-feedback" role="status">云端语音尚未配置。浏览器语音可独立使用。</p>
+              <p id="speech-session-status" class="preferences-feedback" role="status">默认使用 UniAPI 语音，可留空读取本机 Key 后保存；无需百炼 Workspace ID。</p>
             </form>
             <label class="preference-switch" for="settings-voice-enabled"><span><strong>语音指导播报</strong><small>开启麦克风后朗读指导；关闭后仍可语音输入。</small></span><input type="checkbox" id="settings-voice-enabled" checked></label>
             <div class="preferences-fields-row">
@@ -257,6 +258,7 @@
               <div class="preferences-field"><label for="settings-voice-volume">播报音量 <output id="settings-volume-label" for="settings-voice-volume">100%</output></label><input type="range" id="settings-voice-volume" min="0" max="1" step="0.1" value="1"></div>
             </div>
             <div class="preferences-inline"><button type="button" id="settings-voice-preview">试听播报</button><p id="settings-voice-capability" class="preferences-caption"></p></div>
+            <p id="settings-voice-preview-status" class="preferences-feedback" role="status" aria-live="polite"></p>
           </section>
           <section class="preferences-card" aria-labelledby="preview-settings-title">
             <div class="preferences-card-heading"><div><h2 id="preview-settings-title">取景与拍摄</h2><p>设置自动应用到拍摄页，照片保留原始画面。</p></div></div>
