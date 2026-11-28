@@ -267,7 +267,7 @@ export function setupAi(getScene, onAdvice) {
     } catch (error) {
       if (pending !== active) return;
       if (error.status === 409) updateConnection({ connected: false });
-      if (!localRequest) status.textContent = error.message;
+      if (!localRequest) status.textContent = `摄影模型 LLM：${error.message}`;
     } finally {
       if (pending === active) {
         pending = null;

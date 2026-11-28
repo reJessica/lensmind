@@ -126,6 +126,8 @@
 
 ## 固定模型语音会话
 
+默认 ASR 已切到独立本地 Zipformer 流式服务（见 [LOCAL_ASR_API.md](LOCAL_ASR_API.md)），本节仍描述云端语音会话。选择本地 ASR 时，前端将此云端会话的 `asr` 设为 `browser`（不启用云端 ASR），仅保管 TTS 凭据；本地 ASR 实际使用自己的会话，既不调用浏览器识别，也不读取云端密钥。原有 Whisper 请求继续兼容。
+
 2026-11-28 新增 UniAPI TTS `gemini-3.8-flash-lite-tts`（默认，Kore），与 Whisper 搭配；旧 `tts-1` 请求继续兼容，作为手选备用。Gemini 调用固定 `https://api.uniapi.io/gemini/v1beta/models/gemini-3.8-flash-lite-tts:generateContent`，`x-goog-api-key` 鉴权，后端解码校验 JSON inlineData 中的 WAV，响应仍为 WAV 音频与 LIVE 标记。共享调用预算、会话有效期和失败不回退规则不变。Gemini 的 rate 为快慢风格提示，不保证精确倍速。
 
 仅供本机同源工作台使用，校验方式与摄影模型接口一致。与摄影连接独立，密钥只在后端会话内存保留 30 分钟。保存不调用供应商，响应中的 `verified:false` 不表示连接失败，而表示尚未验证云端鉴权。可用模型和操作步骤见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。

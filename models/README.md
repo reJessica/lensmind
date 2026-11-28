@@ -1,5 +1,7 @@
 # 本地视觉模型
 
+另有本地流式 ASR：`sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/`，三个 ONNX 权重由 Git LFS 管理，拉取后运行 `git lfs pull`。来源和固定哈希见该目录，启动步骤见 [本地 ASR 交接](../docs/LOCAL_ASR.md)。下文继续介绍视觉模型。
+
 这三个固定版本的 ONNX 模型随仓库分发，应用从仓库根目录的 `models/` 读取。文件与上游版本逐字节一致。Windows 下运行 `.\scripts\setup-vision.ps1` 可以校验文件，文件缺失时该脚本会按固定版本下载。
 
 | 模型文件 | 用途 | 上游和许可 |

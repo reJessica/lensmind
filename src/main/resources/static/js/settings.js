@@ -1,12 +1,13 @@
 import { aiApi } from './ai-client.js';
-import { FIXED_MODELS, MODEL_PRESETS, LLM_PROFILES, SPEECH_PROFILES } from './model-presets.js';
+import { FIXED_MODELS, MODEL_PRESETS, LLM_PROFILES, SPEECH_PROFILES, LOCAL_ASR_MODEL } from './model-presets.js';
 export { MODEL_PRESETS } from './model-presets.js';
 
 const STORAGE_KEY = 'lensmind.preferences.v1';
 export const DEFAULT_PREFERENCES = Object.freeze({
   modelBaseUrl: MODEL_PRESETS.apihy.url, modelName: MODEL_PRESETS.apihy.model, llmProfile: 'existing', modelDefaultsVersion: 2,
   grid: true, frame: true, delay: '3', voiceEnabled: true, voiceRate: 1, voiceVolume: 1,
-  voiceProvider: 'uniapi', asrModel: SPEECH_PROFILES.uniapi.asr, ttsModel: SPEECH_PROFILES.uniapi.tts, cloudWorkspace: '', speechDefaultsVersion: 4,
+  microphoneDeviceId: '', microphoneProcessing: false,
+  voiceProvider: 'uniapi', asrModel: LOCAL_ASR_MODEL, ttsModel: SPEECH_PROFILES.uniapi.tts, cloudWorkspace: '', speechDefaultsVersion: 5,
 });
 
 function safeBaseUrl(value) {
@@ -33,24 +34,27 @@ export function normalizePreferences(input) {
     modelName = DEFAULT_PREFERENCES.modelName;
   }
   const profile = Object.keys(LLM_PROFILES).find(key => LLM_PROFILES[key].url === modelBaseUrl && LLM_PROFILES[key].model === modelName);
-  const voiceProvider = [3, 4].includes(value.speechDefaultsVersion) && Object.hasOwn(SPEECH_PROFILES, value.voiceProvider) ? value.voiceProvider : 'uniapi';
+  const voiceProvider = [3, 4, 5].includes(value.speechDefaultsVersion) && Object.hasOwn(SPEECH_PROFILES, value.voiceProvider) ? value.voiceProvider : 'uniapi';
   const speechProfile = SPEECH_PROFILES[voiceProvider];
   // 迁移原来的百炼默认值至已有 UniAPI；保留新版手选的浏览器或百炼配置。
-  const speechModel = (name, fixed) => value[name] === 'browser' && [2, 3, 4].includes(value.speechDefaultsVersion) ? 'browser'
-    : name === 'ttsModel' && voiceProvider === 'uniapi' && value.speechDefaultsVersion === 4 && value[name] === 'tts-1' ? 'tts-1' : fixed;
+  const speechModel = (name, fixed) => value[name] === 'browser' && [2, 3, 4, 5].includes(value.speechDefaultsVersion) ? 'browser'
+    : name === 'ttsModel' && voiceProvider === 'uniapi' && [4, 5].includes(value.speechDefaultsVersion) && value[name] === 'tts-1' ? 'tts-1' : fixed;
   return {
     modelBaseUrl, modelName, llmProfile: value.llmProfile === 'custom' ? 'custom' : profile || 'custom', modelDefaultsVersion: 2,
     grid: boolean('grid'), frame: boolean('frame'),
     delay: ['0', '3', '5'].includes(String(value.delay)) ? String(value.delay) : DEFAULT_PREFERENCES.delay,
     voiceEnabled: boolean('voiceEnabled'),
+    microphoneDeviceId: typeof value.microphoneDeviceId === 'string' && value.microphoneDeviceId.length <= 256 ? value.microphoneDeviceId : '',
+    microphoneProcessing: boolean('microphoneProcessing'),
     voiceRate: [.8, 1, 1.2].includes(value.voiceRate) ? value.voiceRate : DEFAULT_PREFERENCES.voiceRate,
     voiceVolume: typeof value.voiceVolume === 'number' && Number.isFinite(value.voiceVolume)
       ? Math.min(1, Math.max(0, value.voiceVolume)) : DEFAULT_PREFERENCES.voiceVolume,
     voiceProvider,
-    asrModel: speechModel('asrModel', speechProfile.asr),
+    asrModel: value.asrModel === 'browser' && [2, 3, 4, 5].includes(value.speechDefaultsVersion) ? 'browser'
+      : value.speechDefaultsVersion === 5 && value.asrModel === speechProfile.asr ? speechProfile.asr : LOCAL_ASR_MODEL,
     ttsModel: speechModel('ttsModel', speechProfile.tts),
     cloudWorkspace: typeof value.cloudWorkspace === 'string' && /^[a-zA-Z0-9-]{0,80}$/.test(value.cloudWorkspace) ? value.cloudWorkspace : '',
-    speechDefaultsVersion: 4,
+    speechDefaultsVersion: 5,
   };
 }
 
@@ -85,14 +89,17 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
 
   function renderSpeechOptions() {
     const profile = SPEECH_PROFILES[preferences.voiceProvider];
-    const cloud = preferences.asrModel !== 'browser' || preferences.ttsModel !== 'browser';
+    const cloud = !['browser', LOCAL_ASR_MODEL].includes(preferences.asrModel) || preferences.ttsModel !== 'browser';
     $('speech-provider').value = preferences.voiceProvider;
     for (const [id, kind] of [['settings-asr-model', 'asr'], ['settings-tts-model', 'tts']]) {
       const select = $(id);
-      if (select.options[0].value !== profile[kind]) {
-        select.replaceChildren(new Option(`${profile.label} · ${profile[kind]}（固定）`, profile[kind]),
+      const first = kind === 'asr' ? LOCAL_ASR_MODEL : profile[kind];
+      if (select.options[0].value !== first || select.dataset.provider !== preferences.voiceProvider) {
+        select.replaceChildren(...(kind === 'asr' ? [new Option('本地 Zipformer · 流式中文识别（推荐）', LOCAL_ASR_MODEL)] : []),
+          new Option(`${profile.label} · ${profile[kind]}（云端）`, profile[kind]),
           ...(kind === 'tts' && preferences.voiceProvider === 'uniapi' ? [new Option('UniAPI · tts-1（备用，曾上游满载）', 'tts-1')] : []),
           new Option(kind === 'asr' ? '浏览器语音识别（手动选择）' : '浏览器语音播报（手动选择）', 'browser'));
+        select.dataset.provider = preferences.voiceProvider;
       }
       select.value = preferences[kind === 'asr' ? 'asrModel' : 'ttsModel'];
     }
@@ -126,6 +133,7 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     $('settings-voice-volume').value = String(preferences.voiceVolume);
     $('settings-volume-label').value = `${Math.round(preferences.voiceVolume * 100)}%`;
     $('speech-workspace').value = preferences.cloudWorkspace;
+    $('settings-mic-processing').checked = preferences.microphoneProcessing;
     renderSpeechOptions();
   }
 
@@ -175,7 +183,7 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
     const voiceProvider = $('speech-provider').value;
     const profile = SPEECH_PROFILES[voiceProvider];
     $('speech-key').value = '';
-    update({ voiceProvider, asrModel: profile.asr, ttsModel: profile.tts });
+    update({ voiceProvider, asrModel: preferences.asrModel === LOCAL_ASR_MODEL ? LOCAL_ASR_MODEL : profile.asr, ttsModel: profile.tts });
     $('speech-session-status').textContent = '已切换语音服务商，请保存语音配置；不会沿用其他服务商的密钥。';
   });
   for (const [id, name] of [['grid-toggle', 'grid'], ['frame-toggle', 'frame'], ['settings-voice-enabled', 'voiceEnabled']]) {
@@ -188,18 +196,53 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
   $('settings-voice-rate').addEventListener('change', () => update({ voiceRate: Number($('settings-voice-rate').value) }));
   $('settings-voice-volume').addEventListener('input', () => update({ voiceVolume: Number($('settings-voice-volume').value) }));
   $('settings-voice-preview').addEventListener('click', onPreviewVoice);
+  $('settings-mic-device').addEventListener('change', () => {
+    onSpeechChange();
+    update({ microphoneDeviceId: $('settings-mic-device').value });
+  });
+  $('settings-mic-processing').addEventListener('change', () => {
+    onSpeechChange();
+    update({ microphoneProcessing: $('settings-mic-processing').checked });
+  });
+  async function refreshMicrophones() {
+    const select = $('settings-mic-device');
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) throw new Error('当前浏览器不支持枚举输入设备。');
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'audioinput');
+      select.replaceChildren(new Option('系统默认麦克风', ''), ...devices.filter(device => device.deviceId).map((device, index) =>
+        new Option(device.label || `麦克风 ${index + 1}（授权后可显示名称）`, device.deviceId)));
+      if (preferences.microphoneDeviceId && !devices.some(device => device.deviceId === preferences.microphoneDeviceId)) {
+        select.add(new Option('此前选择的麦克风（当前不可用）', preferences.microphoneDeviceId));
+      }
+      select.value = preferences.microphoneDeviceId;
+      $('settings-mic-hint').textContent = '建议选择 MacBook Air 麦克风或你的实体麦克风；BlackHole 等虚拟设备可能没有输入。更改后返回拍摄页重新开启麦克风。此选择用于本地及云端 ASR。';
+    } catch (error) { $('settings-mic-hint').textContent = error.message; }
+  }
+  $('settings-mic-refresh').addEventListener('click', refreshMicrophones);
+  async function refreshLocalAsr() {
+    $('local-asr-status').textContent = '正在检查本机识别服务…';
+    try {
+      const response = await fetch('/api/ai/local-asr/status', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+      const result = await response.json();
+      if (!response.ok || !result.ready) throw new Error(result.message || '本地 ASR 未就绪。');
+      $('local-asr-status').textContent = '本地 Zipformer 已就绪 · CPU 流式识别 · 不使用云端额度。';
+    } catch (error) { $('local-asr-status').textContent = error.message || '无法连接本地 ASR，请先启动本机识别服务。'; }
+  }
+  $('local-asr-check').addEventListener('click', refreshLocalAsr);
   $('reset-preferences').addEventListener('click', () => {
     $('ai-key').value = '';
     $('speech-key').value = '';
     onSpeechChange();
     preferences = { ...DEFAULT_PREFERENCES };
     render();
+    refreshMicrophones();
     update(preferences);
     $('settings-save-status').textContent += ' 已恢复默认偏好，现有模型连接保持不变。';
   });
 
   async function refresh() {
     if (refreshing) return;
+    refreshLocalAsr();
     refreshing = true;
     $('settings-refresh').disabled = true;
     $('settings-service-status').textContent = '正在获取服务状态…';
@@ -224,9 +267,11 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
   }
   $('settings-refresh').addEventListener('click', refresh);
   render();
+  refreshMicrophones();
   return {
     get preferences() { return preferences; },
     refresh,
+    refreshMicrophones,
     updateDevice(device, online) {
       $('settings-device-status').textContent = !online ? '控制服务未连接' : device?.so101
         ? `SO-101 三维仿真 · ${device.state === 'STOPPED' ? '已停止' : '已连接'}` : `二维模拟设备 · ${device?.state === 'STOPPED' ? '已停止' : '已连接'}`;

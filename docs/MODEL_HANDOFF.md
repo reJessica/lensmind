@@ -8,6 +8,8 @@
 
 ## 现在交付了什么
 
+2026-11-28 最新更新（ya.liu，AI 辅助：Codex）：默认 ASR 已改为本地 Zipformer 中文流式模型，权重通过 Git LFS 随 `ya.liu` 分支分发；只需要本机服务，不使用 ASR API Key。实时中间文字不执行动作，最终句去重后进入原有指令解析。跨平台启动和验证见 [LOCAL_ASR.md](LOCAL_ASR.md)，接口见 [LOCAL_ASR_API.md](LOCAL_ASR_API.md)。下方云端 Whisper/Gemini 历史验证保留，云端选项仍可手选。
+
 2026-11-28 最新可用语音搭配（ya.liu，AI 辅助：Codex）：Whisper + Gemini `gemini-3.8-flash-lite-tts/Kore` 经 UniAPI 原生接口与项目后端真实合成/回听均成功。设置页已改默认并迁移旧 tts-1 偏好；音频位于 Git 忽略的 `docs/model-tts-preview.local.wav`。历史失败记录保留，最新步骤与验证见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。
 
 2026-11-28 补充（ya.liu，AI 辅助：Codex）：新会话 Whisper 独立实测成功，系统语音测试输入「请拍照」转写为「請拍照」（LIVE，2.56 秒）。前端已修复繁体快门识别，等待 TTS 合成不再暂停 ASR，仅实际播放音频时暂停。UniAPI `tts-1` 与用户指定的 Gemini `gemini-2.5-flash-preview-tts`（原生接口、Kore）各一次仍为上游满载，无云端音频；未重试或自动切模型。真实麦克风及拍照流程需在浏览器授权后联调，不能把本机系统测试录音当成云端生成成果。

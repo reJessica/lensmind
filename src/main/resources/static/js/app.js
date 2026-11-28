@@ -7,7 +7,8 @@ import { isAiCommand, setupAi } from './ai.js';
 import { createSpeechInput, createVoiceGuide } from './voice.js';
 import { setupSettings } from './settings.js';
 import { setupCloudSpeech, createCloudSpeechInput, routeSpeechInput } from './cloud-speech.js';
-import { isCloudTts } from './model-presets.js';
+import { isCloudTts, LOCAL_ASR_MODEL } from './model-presets.js';
+import { createLocalSpeechInput } from './local-speech.js';
 
 const $ = id => document.getElementById(id);
 const preview = $('preview');
@@ -45,8 +46,15 @@ const browserSpeech = createSpeechInput({
   Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
   ...speechHandlers,
 });
-const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers });
-const speech = routeSpeechInput(browserSpeech, cloudSpeech);
+const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers,
+  audioOptions: () => ({ deviceId: $('settings-mic-device').value, processing: $('settings-mic-processing').checked }),
+  onDeviceReady: () => settings.refreshMicrophones(),
+});
+const localSpeech = createLocalSpeechInput({ ...speechHandlers,
+  audioOptions: () => ({ deviceId: $('settings-mic-device').value, processing: $('settings-mic-processing').checked }),
+  onDeviceReady: () => settings.refreshMicrophones(),
+});
+const speech = routeSpeechInput(browserSpeech, cloudSpeech, localSpeech);
 const voice = createVoiceGuide({
   synthesis: window.speechSynthesis, Utterance: window.SpeechSynthesisUtterance,
   useCloud: () => isCloudTts($('settings-tts-model').value),
@@ -61,7 +69,7 @@ const voice = createVoiceGuide({
     const messages = {
       loading: cloudTts ? '正在请求云端合成，可能需要等待约 60 秒；可点击取消，请勿重复提交。' : '正在启动浏览器播报…',
       playing: '正在播放；如听不到声音，请检查系统音量、标签页静音和音频输出设备。',
-      ended: '播报已结束。', cancelled: '已取消等待或播放；已发送的云端请求仍可能计费。',
+      ended: '播报已结束。', cancelled: message || '',
     };
     $('settings-voice-preview-status').textContent = phase === 'error' ? `试听失败：${message}` : messages[phase] || '';
   },
@@ -69,7 +77,7 @@ const voice = createVoiceGuide({
 const settings = setupSettings({
   onChange: applyPreferences,
   onPreviewVoice: () => {
-    if (voice.busy) { voice.cancel(); return; }
+    if (voice.busy) { voice.cancel('试听已停止。'); return; }
     setVoiceEnabled(true);
     voice.speak('你好，我是灵眸。请看向镜头，放松肩膀。');
   },
@@ -488,7 +496,8 @@ async function pollStatus() {
     const wasOnline = state.online;
     state.online = false;
     state.stopResetConfirmed = false;
-    voice.reset();
+    // 设置页试听独立于设备连接，仿真断连不应打断音频。
+    if (state.page !== 'settings') voice.reset();
     cancelCapture();
     $('service-status').textContent = '控制服务未连接';
     $('service-dot').classList.add('offline');
@@ -1043,7 +1052,7 @@ function showMicrophoneStatus({ handsFree, listening, message }) {
   mic.title = micLabel;
   mic.setAttribute('aria-pressed', handsFree);
   if (!handsFree && message) setVoiceEnabled(false);
-  const provider = $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
+  const provider = $('settings-asr-model').value === LOCAL_ASR_MODEL ? '本地' : $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
   const status = message || (handsFree ? (listening ? `${provider}正在听，可以说「拍摄」「停止」或「清空」。` : '正在开启麦克风…') : '');
   setText($('mic-status'), status);
   $('mic-status').hidden = !status;

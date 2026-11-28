@@ -2,6 +2,7 @@ export const FIXED_MODELS = Object.freeze({
   llm: 'qwen3.5-flash-2026-02-23', asr: 'fun-asr-realtime-2026-02-28',
   tts: 'qwen-audio-3.1-tts-flash', voice: 'longanhuan_v3.1',
 });
+export const LOCAL_ASR_MODEL = 'sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30';
 export const MODEL_PRESETS = Object.freeze({
   dashscope: { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: FIXED_MODELS.llm },
   apihy: { url: 'https://zgc.apihy.com/v1', model: 'qwen3.5-27b' },
