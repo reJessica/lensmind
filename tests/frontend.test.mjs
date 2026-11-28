@@ -736,7 +736,7 @@ test('live speech guides the subject in the current frame and uses the same read
   assert.deepEqual(parseCommand('我已完成，继续。'), { type: 'GUIDE_DONE' });
 });
 
-test('半身和全身只是构图目标，缺少腰胯或脚部关键点不拦截拍摄和强制播报', () => {
+test('工作台启用严格景别，通用构图判断仍支持景别参考模式', () => {
   const now = 7300;
   const box = { x: .32, y: .08, width: .36, height: .92 };
   const face = { x: .46, y: .12, width: .08, height: .08 };
@@ -758,6 +758,14 @@ test('半身和全身只是构图目标，缺少腰胯或脚部关键点不拦�
   assert.equal(capturePositionHint(frame(halfPose), 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
   assert.equal(capturePositionHint(frame(fullPose), 'center', goals, { ...options, framing: 'full' }), '');
   assert.equal(capturePositionHint(frame({}), 'center', goals, { ...options, framing: 'any' }), '');
+  const strict = { ...options, strictFraming: true };
+  assert.match(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, strict), /腰胯/);
+  assert.match(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, strict), /腰胯/);
+  assert.equal(capturePositionHint(frame(halfPose), 'center', goals, strict), '');
+  assert.match(capturePositionHint(frame(fullPose), 'center', goals, strict), /下边缘/);
+  assert.match(capturePositionHint(frame(halfPose), 'center', goals, { ...strict, framing: 'full', skipPosition: true }), /双脚/);
+  assert.equal(capturePositionHint(frame(fullPose), 'center', goals, { ...strict, framing: 'full' }), '');
+  assert.equal(capturePositionHint(frame({}), 'center', goals, { ...strict, framing: 'any' }), '');
   assert.equal(capturePositionHint({ status: 'error' }, 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
 });
 

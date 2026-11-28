@@ -172,12 +172,17 @@ export function setupAi(getScene, onAdvice) {
     finally { setChanging(false); }
   });
 
-  function setReference(data) {
+  function setReference(data, filename = '') {
     reference = data;
     const thumbnail = $('ai-thumbnail');
     if (data) thumbnail.src = data;
     else thumbnail.removeAttribute('src');
     thumbnail.hidden = !data;
+    const name = $('ai-reference-name');
+    name.textContent = filename;
+    name.title = filename;
+    name.hidden = !data;
+    $('ai-reference-action').textContent = data ? '更换参考图' : '选择参考图';
     $('ai-remove-reference').hidden = !data;
     $('ai-result').hidden = true;
     updateAnalyze();
@@ -198,7 +203,7 @@ export function setupAi(getScene, onAdvice) {
       const image = await createImageBitmap(file).catch(() => { throw new Error('参考图无法打开，请换一张图片。'); });
       try {
         if (version !== referenceVersion) return;
-        setReference(jpeg(image, image.width, image.height));
+        setReference(jpeg(image, image.width, image.height), file.name);
         status.textContent = '已选择参考图。';
       } finally { image.close(); }
     } catch (error) {
