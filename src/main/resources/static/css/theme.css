@@ -1,0 +1,377 @@
+body {
+  --scene-bg: #e58d67;
+  --scene-ink: #321b17;
+  --scene-light: #ffe6ce;
+  --scene-page: color-mix(in srgb, var(--scene-bg) 55%, #fff3e9);
+  --scene-paper: color-mix(in srgb, var(--scene-bg) 12%, #fffdf7);
+  --scene-selected: color-mix(in srgb, var(--scene-bg) 70%, #fffdf7);
+  --scene-soft: color-mix(in srgb, var(--scene-bg) 17%, #fffdf7);
+  --scene-tint: color-mix(in srgb, var(--scene-bg) 32%, #fffdf7);
+  --scene-line: color-mix(in srgb, var(--scene-bg) 32%, #cbbbaf);
+  --scene-muted: color-mix(in srgb, var(--scene-ink) 78%, #77716b);
+  --scene-focus: color-mix(in srgb, var(--scene-ink) 73%, var(--scene-bg));
+  --scene-shadow: 0 4px 16px color-mix(in srgb, var(--scene-ink) 7%, transparent);
+  --frame-corners:
+    linear-gradient(currentColor, currentColor) top left / 13px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) top left / 1px 13px no-repeat,
+    linear-gradient(currentColor, currentColor) top right / 13px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) top right / 1px 13px no-repeat,
+    linear-gradient(currentColor, currentColor) bottom left / 13px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) bottom left / 1px 13px no-repeat,
+    linear-gradient(currentColor, currentColor) bottom right / 13px 1px no-repeat,
+    linear-gradient(currentColor, currentColor) bottom right / 1px 13px no-repeat;
+  --paper: var(--scene-paper);
+  --line: var(--scene-line);
+  --ink: var(--scene-ink);
+  --muted: var(--scene-muted);
+  min-block-size: 100vh;
+  color: var(--scene-ink);
+  background: var(--scene-page);
+  accent-color: var(--scene-focus);
+}
+
+body:has(#home-carousel[data-tone="green"]) {
+  --scene-bg: #81ab78;
+  --scene-ink: #172c1b;
+  --scene-light: #e8f2d7;
+}
+
+body:has(#home-carousel[data-tone="pink"]) {
+  --scene-bg: #dd91b2;
+  --scene-ink: #381e32;
+  --scene-light: #ffe3ef;
+}
+
+body:has(#home-carousel[data-tone="blue"]) {
+  --scene-bg: #7caede;
+  --scene-ink: #14293e;
+  --scene-light: #e0f1ff;
+}
+
+.site-header {
+  background: var(--scene-page);
+  border-bottom-color: transparent;
+}
+
+:is(.site-brand, .site-brand small, .site-nav a, .site-nav a:hover, #help-button) {
+  color: var(--scene-ink);
+}
+
+
+.site-nav, #help-button {
+  border-color: color-mix(in srgb, var(--scene-line) 75%, transparent);
+  border-radius: 100px;
+  background: #fff9ef60;
+}
+
+.site-nav a { border-radius: 100px; }
+
+.site-nav a[aria-current="page"], .site-nav a:hover, #help-button:hover {
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+}
+
+#photo-count { background: var(--scene-tint); color: var(--scene-ink); }
+
+.workflow-shell h1 { color: var(--scene-ink); }
+.flow-heading {
+  margin: 0 0 15px;
+  padding: 0 0 8px;
+  border: 0;
+}
+
+.flow-heading h1 {
+  margin: 0;
+  font-size: clamp(23px, 3vw, 33px);
+  font-weight: 730;
+}
+:is(.flow-heading p, .service-reading, .assistant-status, .review-note span,
+    .preferences-overview > p, .preferences-card-heading p, .preferences-field p, .preferences-caption,
+    .connection-reading > span, .preference-switch small, .preferences-status-list dt, .preferences-field output) {
+  color: var(--scene-muted);
+}
+.connection-reading > span[data-connected="true"] { color: #275334; }
+
+:is(.flow-button, .photo-modes button, .dialog-actions button, .preferences-card button, .reference-picker, .analysis-button) {
+  border-color: var(--scene-line);
+  border-radius: 100px;
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+}
+
+:is(.flow-button, .photo-modes button, .dialog-actions button, .preferences-card button, .reference-picker, .analysis-button):hover {
+  background: var(--scene-tint);
+}
+
+#ai-remove-reference {
+  border-color: var(--scene-line);
+  border-radius: 100px;
+  background-color: var(--scene-paper);
+  color: var(--scene-ink);
+}
+
+#ai-remove-reference:hover { background-color: var(--scene-tint); }
+
+:is(.flow-button.flow-primary, .flow-button.flow-finish, .shutter-controls .capture-button,
+    .primary-button, .dialog-actions .primary-button, .preferences-card .flow-primary) {
+  border-color: var(--scene-ink);
+  border-radius: 100px;
+  background: var(--scene-ink);
+  color: #fff9ee;
+}
+
+:is(.flow-button.flow-primary, .flow-button.flow-finish, .shutter-controls .capture-button,
+    .primary-button, .dialog-actions .primary-button, .preferences-card .flow-primary):hover {
+  background: var(--scene-focus);
+}
+
+body :is(button, a, input, select, summary):focus-visible { outline-color: var(--scene-focus); }
+
+#studio .panel,
+.preferences-card, .preferences-overview, .review-note, .photo-card {
+  border: 0;
+  border-radius: 17px;
+  background: var(--scene-paper);
+  box-shadow: var(--scene-shadow);
+}
+
+#studio .panel-title, .shutter-controls, .preference-switch, .preferences-status-list > div {
+  border-color: color-mix(in srgb, var(--scene-ink) 12%, transparent);
+}
+
+:is(.panel-title h2, .assistant-heading h2, .preferences-card-heading h2, .preferences-overview h2) {
+  color: var(--scene-ink);
+  font-weight: 740;
+}
+
+.preview-settings-link, .settings-disclosure summary { color: var(--scene-focus); }
+
+#viewfinder { background-color: var(--scene-tint); }
+#viewfinder::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  inset: 8px;
+  color: #fff9efbc;
+  background: var(--frame-corners);
+  pointer-events: none;
+}
+
+:is(.voice-bar, .analysis-section, .reference-visual,
+    .connection-reading, .preferences-tag, .preferences-notice) {
+  border-color: var(--scene-line);
+  background: var(--scene-soft);
+  color: var(--scene-ink);
+}
+
+.photo-modes button[aria-pressed="true"] {
+  border-color: var(--scene-line);
+  background: var(--scene-tint);
+  color: var(--scene-ink);
+}
+
+.studio-tools .voice-bar:focus-within { border-color: var(--scene-focus); }
+.studio-tools .voice-bar input::placeholder { color: var(--scene-muted); }
+.studio-tools .command-examples button { border-radius: 100px; background: var(--scene-paper); color: var(--scene-muted); }
+.studio-tools .command-examples button:hover, .analysis-section summary:hover { background: var(--scene-tint); }
+.mic-button:not([aria-pressed="true"]), .analysis-icon { background: var(--scene-tint); color: var(--scene-ink); }
+.analysis-icon::before, .analysis-chevron { border-color: var(--scene-focus); }
+.analysis-section summary, .reference-heading, .reference-filename { color: var(--scene-ink); }
+.reference-card { border-color: var(--scene-line); background: var(--scene-paper); }
+.reference-caption, .reference-heading span { color: var(--scene-muted); }
+
+.review-note { margin-block: 18px; padding: 13px 18px; }
+#gallery .gallery-empty {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  min-height: clamp(178px, 35svh, 310px);
+  align-content: center;
+  padding: 20px 16px;
+  border-color: var(--scene-line);
+  border-radius: 17px;
+  background: var(--scene-paper);
+}
+#gallery .gallery-empty::before {
+  content: '';
+  inline-size: 55px;
+  block-size: 43px;
+  color: var(--scene-focus);
+  background: radial-gradient(circle, var(--scene-tint) 24%, transparent 27%) center no-repeat, var(--frame-corners);
+}
+#gallery .gallery-empty p { color: var(--scene-muted); text-align: center; }
+.photo-card img { border-radius: 10px; background: var(--scene-soft); }
+.photo-card .photo-card-info, .photo-card .photo-card-info span:last-child, .photo-card-info button { color: var(--scene-muted); }
+.photo-card-info button:hover { background: var(--scene-tint); }
+
+.preferences-overview { padding: clamp(16px, 2vw, 24px); }
+.preferences-field :is(input:not([type="range"]), select),
+.preferences-field input[readonly], .shutter-controls select, .editor-controls select {
+  border-color: var(--scene-line);
+  background-color: var(--scene-paper);
+  color: var(--scene-ink);
+}
+.preferences-field input[readonly] { background-color: var(--scene-soft); }
+.preference-switch input { border-color: var(--scene-line); background: var(--scene-soft); }
+.preference-switch input:checked { border-color: var(--scene-focus); background: var(--scene-focus); }
+.preferences-field input[type="range"], #editor-zoom, .preview-tools input { accent-color: var(--scene-focus); }
+.preferences-notice { color: var(--scene-muted); }
+
+:is(.workflow-help, .photo-dialog) {
+  border: 1px solid var(--scene-line);
+  border-radius: 20px;
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+  box-shadow: 0 24px 78px #291c1840;
+}
+
+:is(.workflow-help, .photo-dialog)::backdrop { background: #261a1866; }
+
+:is(.workflow-help, .photo-dialog) .dialog-header {
+  padding: 0 0 9px;
+  border: 0;
+  background: transparent;
+}
+
+:is(.workflow-help, .photo-dialog) .dialog-header h2 { color: var(--scene-ink); font-size: clamp(18px, 3vw, 24px); font-weight: 760; }
+:is(.workflow-help, .photo-dialog) .icon-button { background: var(--scene-paper); border-radius: 50%; color: var(--scene-ink); }
+.workflow-help { width: min(610px, 94vw); font-size: 14px; line-height: 1.65; }
+.workflow-help h2 { margin-inline-end: auto; }
+.workflow-help ol { margin: 0 0 18px; padding-inline-start: 24px; }
+.workflow-help li { padding: 8px 2px 8px 4px; }
+.workflow-help li + li { border-top: 1px solid var(--scene-line); }
+.workflow-help li::marker { color: var(--scene-focus); font-weight: 750; }
+
+.setting-group { border-color: color-mix(in srgb, var(--scene-ink) 12%, transparent); }
+.setting-title > span { color: var(--scene-muted); }
+#studio :is(.ratio-options, .segmented) { background: transparent; }
+#studio .segmented { padding-inline: 0; }
+#studio :is(.ratio-options, .segmented) button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--scene-soft);
+  color: var(--scene-muted);
+  box-shadow: none;
+}
+
+#studio :is(.ratio-options, .segmented) button:hover { background: var(--scene-tint); }
+
+#studio :is(.ratio-options, .segmented) button[aria-pressed="true"] {
+  background: var(--scene-selected);
+  border-color: color-mix(in srgb, var(--scene-bg) 77%, var(--scene-ink));
+  color: var(--scene-ink);
+  font-weight: 720;
+}
+
+#viewfinder[data-camera-waiting] > :not(.camera-placeholder) { display: none; }
+
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: 20px;
+  background: var(--scene-soft);
+  color: var(--scene-ink);
+  font-size: clamp(13px, 1.8vw, 16px);
+  line-height: 1.55;
+  text-align: center;
+}
+
+.camera-placeholder::before {
+  content: '';
+  inline-size: 42px;
+  block-size: 30px;
+  color: var(--scene-focus);
+  background: radial-gradient(circle, currentColor 12%, transparent 15%) center no-repeat, var(--frame-corners);
+}
+
+.site-brand { gap: 8px; font-size: 16px; font-weight: 780; line-height: 1.05; }
+.site-brand small { margin-top: 4px; font-size: 9px; font-weight: 620; letter-spacing: .1em; }
+.site-mark {
+  flex: none;
+  inline-size: 35px;
+  block-size: 32px;
+  background: currentColor;
+  mask: url("/assets/logo.svg?v=2") center / contain no-repeat;
+}
+
+.capture-mode-picker { margin-block: 4px 18px; }
+.capture-mode-picker h2 { margin-bottom: 9px; font-size: 14px; font-weight: 740; }
+.shoot-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.capture-mode-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(8px, 1.6vw, 16px);
+  padding: clamp(11px, 1.6vw, 17px);
+  border: 1px solid transparent;
+  border-radius: 15px;
+  background: var(--scene-paper);
+  color: var(--scene-ink);
+  text-align: start;
+}
+.capture-mode-card:hover { background: var(--scene-tint); }
+.capture-mode-card[aria-pressed="true"] {
+  border-color: var(--scene-focus);
+  background: var(--scene-selected);
+}
+.capture-mode-label { display: grid; gap: 5px; min-width: 0; }
+.capture-mode-label strong { font-size: 15px; line-height: 1.2; font-weight: 760; }
+.capture-mode-label > span { color: var(--scene-muted); font-size: 12px; line-height: 1.45; }
+
+.capture-mode-icon {
+  inline-size: 32px;
+  block-size: 32px;
+  border-radius: 9px;
+  background: var(--scene-soft);
+  color: var(--scene-ink);
+  display: grid;
+  place-items: center;
+}
+.capture-mode-icon::before {
+  content: '';
+  inline-size: 17px;
+  block-size: 17px;
+  background: radial-gradient(circle, currentColor 16%, transparent 19%), var(--frame-corners);
+  background-size: auto, 5px 1px, 1px 5px, 5px 1px, 1px 5px, 5px 1px, 1px 5px, 5px 1px, 1px 5px;
+}
+[data-capture-mode="manual"] .capture-mode-icon::before {
+  inline-size: 15px;
+  block-size: 15px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: radial-gradient(circle, currentColor 30%, transparent 34%);
+}
+
+.capture-mode-check {
+  display: grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--scene-focus);
+  border-radius: 50%;
+}
+.capture-mode-card[aria-pressed="true"] .capture-mode-check { background: var(--scene-ink); color: var(--scene-paper); }
+.capture-mode-card[aria-pressed="true"] .capture-mode-check::after {
+  content: '';
+  inline-size: 7px;
+  block-size: 4px;
+  border: solid currentColor;
+  border-width: 0 0 1.5px 1.5px;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+#camera-retry { justify-self: center; }
+#so101-view figure { margin: 12px 0; }
+#so101-view figure:has(img[hidden]) { display: none; }
+#so101-view figcaption { color: var(--scene-muted); font-size: 12px; }
+
+@media (max-width: 535px) {
+  .shoot-mode-options { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .capture-mode-picker { margin-block-end: 13px; }
+  .capture-mode-label { gap: 3px; }
+}

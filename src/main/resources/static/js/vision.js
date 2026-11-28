@@ -65,10 +65,54 @@ function mostlyInArea(boxes, target) {
   return area > 0 && covered > area / 2 + 1e-10;
 }
 
-export function capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, framing, skipPosition, now = Date.now() } = {}) {
-  if (skipPosition) return '';
+function framingHint(analysis, framing, targets) {
+  if (framing !== 'half' && framing !== 'full') return '';
+  const half = framing === 'half';
+  const required = half ? '从头顶到腰胯' : '从头顶到双脚';
+  const people = (analysis?.people ?? []).filter(person => person.person && (!targets.size || targets.has(person.id)));
+  if (!people.length) return `请让人物${required}入镜。`;
+  if (!Array.isArray(analysis.poses)) return '正在等待姿态检测，请确认本机已准备姿态模型。';
+  if (!Array.isArray(analysis.faces)) return '正在等待人脸检测，请确认本机已准备人脸模型。';
+  for (const person of people) {
+    const label = people.length > 1 || targets.size ? `人物 ${person.id}，` : '';
+    const { nose, leftShoulder, rightShoulder, leftHip, rightHip } = person.pose ?? {};
+    if (![nose, leftShoulder, rightShoulder, leftHip, rightHip].every(point => point && insideCrop(point))) {
+      return `${label}请让${required}都进入裁剪框。`;
+    }
+    const shoulders = Math.min(leftShoulder.y, rightShoulder.y);
+    const hips = Math.max(leftHip.y, rightHip.y);
+    const face = person.face;
+    // 用独立的人脸检测和关节顺序排除近距离时模型推测出的肩胯。
+    if (!face || nose.y >= shoulders || hips - shoulders < face.height
+        || nose.x < face.x - .15 * face.width || nose.x > face.x + 1.15 * face.width
+        || nose.y < face.y || nose.y > face.y + face.height) {
+      return `${label}请面向镜头，让${required}都清楚入镜。`;
+    }
+    const headTop = Math.min(face.y - .12 * face.height, nose.y - .65 * (shoulders - nose.y));
+    if (!insideCrop({ x: face.x, y: face.y }) || !insideCrop({ x: face.x + face.width, y: face.y + face.height })) {
+      return `${label}请把头部完整留在裁剪框内。`;
+    }
+    if (headTop < .015) return `${label}请给头顶留一点空间。`;
+    if (half) {
+      if (1 - hips > .55 * Math.max(.08, hips - shoulders)) return `${label}请把裁剪框下边缘收紧到腰胯附近，保留完整上半身。`;
+    } else {
+      const lower = ['leftKnee', 'rightKnee', 'leftAnkle', 'rightAnkle', 'leftHeel', 'rightHeel', 'leftToe', 'rightToe'];
+      if (!lower.every(name => person.pose[name] && insideCrop(person.pose[name]))
+          || Math.max(person.pose.leftToe.y, person.pose.rightToe.y, person.pose.leftHeel.y, person.pose.rightHeel.y) > .99) {
+        return `${label}请把双腿和双脚完整留在裁剪框内。`;
+      }
+    }
+  }
+  return '';
+}
+
+export function capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, framing, strictFraming = false, skipPosition, now = Date.now() } = {}) {
+  const checksFraming = strictFraming && ['half', 'full'].includes(framing);
+  if (skipPosition && !checksFraming) return '';
   if (analysis?.status === 'error') return '人物分析暂不可用，恢复后可拍摄。';
   if (!analysis?.timestamp || now - analysis.timestamp > MAX_FRAME_AGE) return '等待人物分析更新后可拍摄。';
+  const frameHint = checksFraming ? framingHint(analysis, framing, targets) : '';
+  if (frameHint || skipPosition) return frameHint;
   const people = analysis.people ?? [];
   const visibleBodies = people.flatMap(tracked => tracked.person ? [tracked.person] : []);
   if (headTarget) {
@@ -110,8 +154,12 @@ function headPositionHint(face, target, prefix = '') {
   return inside ? '' : `请让${prefix}头部进入目标区域。`;
 }
 
-export function liveCompositionCue(analysis, composition, targets, { headTarget, bodyTarget, framing, skipPosition, now = Date.now() } = {}) {
+export function liveCompositionCue(analysis, composition, targets, { headTarget, bodyTarget, framing, strictFraming = false, skipPosition, now = Date.now() } = {}) {
   if (!analysis?.timestamp || now - analysis.timestamp > MAX_FRAME_AGE || analysis.status === 'error') return '';
+  if (strictFraming) {
+    const frameHint = framingHint(analysis, framing, targets);
+    if (frameHint) return frameHint.startsWith('正在等待') ? '' : frameHint;
+  }
   if (skipPosition) return '';
   const hint = capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, skipPosition, now });
   if (!hint) return '构图已到位，可以拍了。';
