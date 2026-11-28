@@ -40,6 +40,7 @@ build/
 *.log
 photos/
 node_modules/
+/models/
 /config/ai-local.properties
 /docs/model-test-results.local.json
 /docs/model-tts-preview.local.wav

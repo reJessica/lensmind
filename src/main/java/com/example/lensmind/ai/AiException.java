@@ -10,6 +10,9 @@ public class AiException extends RuntimeException {
         this.status = status;
         this.code = code;
     }
+    AiException(int status, String message) {
+        this(HttpStatus.valueOf(status), "PHOTOGRAPHY_AI_ERROR", message);
+    }
     public HttpStatus status() { return status; }
     public String code() { return code; }
     public static AiException badInput(String message) {
