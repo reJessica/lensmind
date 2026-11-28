@@ -90,6 +90,14 @@ class AiController {
         }
         String prompt = field(input, "prompt").strip();
         if (prompt.length() > 500) throw new AiException(400, "拍摄要求最多 500 字。");
+        if ("reference-plan".equals(field(input, "mode"))) {
+            if (input.path("reference").isMissingNode()) throw new AiException(400, "请先选择参考图。");
+            String reference = validateImage(field(input, "reference"));
+            if (connected(request) != connection) throw new AiException(409, "模型连接已过期或变更，请确认后再试。");
+            var plan = client.planReference(connection.model(), prompt, reference);
+            if (connected(request) != connection) throw new AiException(409, "模型会话已变化，丢弃本次结果。");
+            return success(Map.of("referencePlan", plan));
+        }
         boolean assistant = "assistant".equals(field(input, "mode"));
         if (assistant && prompt.isBlank()) throw new AiException(400, "请填写要交给摄影助手的问题。");
         String scene = assistant && input.path("scene").isMissingNode() ? null : validateImage(field(input, "scene"));
@@ -128,9 +136,10 @@ class AiController {
     }
 
     private Map<String, Object> describe(Connected connection) {
-        if (connection == null) return Map.of("connected", false);
+        if (connection == null) return Map.of("connected", false, "referencePlan", true);
         return Map.of("connected", true, "id", connection.id(), "model", connection.model().model,
-                "host", connection.model().endpoint.getHost(), "expiresAt", connection.model().expiresAt);
+                "host", connection.model().endpoint.getHost(), "expiresAt", connection.model().expiresAt,
+                "referencePlan", true);
     }
 
     private Connected connected(HttpServletRequest request) {

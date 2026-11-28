@@ -80,7 +80,7 @@
 
       <div class="studio-grid">
         <section class="preview-panel panel" aria-label="实时取景">
-          <div class="panel-title"><h2><span class="status-dot"></span> 实时取景</h2><a class="preview-settings-link" href="#settings">显示设置</a></div>
+          <div class="panel-title"><h2><span class="status-dot"></span> 实时取景</h2><a class="preview-settings-link" href="#settings/display">显示设置</a></div>
           <div class="viewfinder" id="viewfinder" data-camera-waiting>
             <div class="camera-placeholder" id="camera-placeholder">
               <p id="camera-status" role="status">正在开启摄像头…</p>
@@ -99,11 +99,16 @@
             </div>
             <div class="person-target-line" id="person-target-line" aria-hidden="true" hidden></div>
             <div class="person-target-area" id="person-target-area" aria-hidden="true" hidden></div>
+            <div class="reference-person-frame" id="reference-person-frame" aria-hidden="true" hidden><span>人物站位</span></div>
             <div class="composition-goal" id="composition-goal" hidden><span></span></div>
             <div id="person-overlays"></div>
             <div id="head-overlays" aria-hidden="true"></div>
             <div class="countdown-overlay" id="countdown-overlay" hidden></div>
             <div class="preview-bottom"><span id="preview-state">等待拍摄</span><span id="resolution">1200 × 800</span></div>
+          </div>
+          <div class="reference-guide-cue" id="reference-guide" hidden>
+            <p id="reference-guide-cue" role="status"></p>
+            <button id="end-reference-guide" type="button">结束指导</button>
           </div>
           <section class="vision-summary" id="vision-summary" aria-label="人物分析" hidden>
             <div class="vision-heading"><strong id="vision-status" role="status"></strong><span id="vision-metrics"></span></div>
@@ -137,7 +142,7 @@
           <section class="studio-tools panel" aria-labelledby="assistant-title">
             <div class="assistant-heading">
               <h2 id="assistant-title">摄影助手</h2>
-              <a id="ai-open" class="flow-button" href="#settings">模型设置</a>
+              <a id="ai-open" class="flow-button" href="#settings/model">模型设置</a>
             </div>
             <p class="assistant-status" id="ai-model-status" hidden></p>
             <p class="assistant-status" id="voice-status" role="status" hidden></p>
@@ -169,6 +174,12 @@
                   </div>
                 </div>
                 <button id="ai-analyze" type="button" class="analysis-button">分析当前画面</button>
+                <section class="reference-plan" id="ai-reference-plan" aria-labelledby="reference-plan-title" hidden>
+                  <h3 id="reference-plan-title">推荐拍摄方案</h3>
+                  <p id="ai-reference-settings"></p>
+                  <p id="ai-reference-tip"></p>
+                  <button id="ai-apply-reference" type="button" class="analysis-button">应用方案并开始指导</button>
+                </section>
               </div>
             </details>
             <div class="assistant-reply">
@@ -181,7 +192,7 @@
                 <details id="ai-control-plan" class="control-plan" hidden><summary>机械臂调整 JSON · 待控制端校验</summary><pre id="ai-plan-json"></pre><a id="ai-plan-download">下载控制计划</a></details>
               </div>
             </div>
-            <p class="assistant-status assistant-privacy" id="assistant-privacy" hidden>连接后，发送的文字和语音转写由模型理解。看图请求会附上当前画幅和已选参考图。</p>
+            <p class="assistant-status assistant-privacy" id="assistant-privacy" hidden>模型处理发送的文字和语音转写。分析当前画面会发送当前画幅，生成拍摄方案会发送所选参考图。</p>
           </section>
 
           <aside class="settings-panel panel" aria-label="拍摄设置">
@@ -239,20 +250,19 @@
 
     <section id="settings" data-page aria-labelledby="settings-title" hidden>
       <header class="flow-heading preferences-heading">
-        <div><p class="preferences-eyebrow">工作台偏好</p><h1 id="settings-title" tabindex="-1">设置</h1><p>在这里管理机械臂、模型连接、语音和取景显示。</p></div>
+        <h1 id="settings-title" tabindex="-1">设置</h1>
         <a class="flow-button" href="#studio">返回拍摄</a>
       </header>
       <div class="preferences-layout">
-        <aside class="preferences-overview">
-          <h2>当前连接</h2>
-          <p>模型、语音与拍摄偏好。</p>
-          <div class="connection-reading"><span id="settings-connection-badge">未连接</span><p id="settings-model-status" role="status">基础指令仍可使用。</p></div>
-          <p class="preferences-caption">普通偏好自动保存在当前浏览器。API 密钥只用于本机临时连接。</p>
-          <button type="button" id="reset-preferences" class="text-button">恢复默认偏好</button>
-          <p id="settings-save-status" class="preferences-caption" role="status">修改后自动保存。</p>
-        </aside>
+        <nav class="preferences-index" aria-label="设置分类">
+          <a data-settings-tab="display" href="#settings/display" aria-current="page">取景与拍摄</a>
+          <a data-settings-tab="model" href="#settings/model">模型连接</a>
+          <a data-settings-tab="voice" href="#settings/voice">语音与播报</a>
+          <a data-settings-tab="device" href="#settings/device">SO-101 机械臂</a>
+          <a data-settings-tab="status" href="#settings/status">服务状态</a>
+        </nav>
         <div class="preferences-sections">
-          <section class="preferences-card" id="so101-settings" aria-labelledby="so101-settings-title">
+          <section class="preferences-card" id="so101-settings" data-settings-section="device" aria-labelledby="so101-settings-title" hidden>
             <div class="preferences-card-heading"><div><h2 id="so101-settings-title">SO-101 机械臂</h2><p id="so101-settings-state" role="status">正在读取机械臂配置…</p></div></div>
             <div id="so101-settings-camera" class="setting-group calibration-task" hidden>
               <div class="setting-title"><h3>腕部摄像头</h3></div>
@@ -288,10 +298,11 @@
               <button id="so101-release" type="button">结束操控并卸力</button>
             </section>
           </section>
-          <section class="preferences-card" aria-labelledby="model-settings-title">
-            <div class="preferences-card-heading"><div><h2 id="model-settings-title">模型连接</h2><p>文字咨询与画面分析共用此连接。</p></div><span class="preferences-tag">多模态</span></div>
+          <section class="preferences-card" data-settings-section="model" aria-labelledby="model-settings-title" hidden>
+            <div class="preferences-card-heading"><div><h2 id="model-settings-title">模型连接</h2><p>文字咨询与画面分析共用此连接。</p></div></div>
+            <div class="connection-reading"><span id="settings-connection-badge">未连接</span><p id="settings-model-status" role="status">基础指令仍可使用。</p></div>
             <form id="ai-connect-form" autocomplete="off">
-              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="existing" selected>默认 · 汇云 Qwen3.5-27B</option><option value="recommended">百炼 · Qwen3.5 Flash 固定快照</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select><p>选择方案后点击连接。</p></div>
+              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="existing" selected>默认 · 汇云 Qwen3.5-27B</option><option value="recommended">百炼 · Qwen3.5 Flash 固定快照</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select></div>
               <details class="preferences-advanced" id="model-advanced"><summary>接口与模型详情</summary>
               <div class="preferences-field" id="custom-provider-field" hidden><label for="ai-provider">API 服务商</label><select id="ai-provider"><option value="apihy">汇云 · 团队接口</option><option value="uniapi">UniAPI</option><option value="sjtu">上海交大 · 致远一号</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="siliconflow">硅基流动</option><option value="dashscope">阿里云百炼</option><option value="custom">自定义地址</option></select></div>
               <div class="preferences-field"><label for="ai-base-url">API 基础地址</label><input type="url" id="ai-base-url" value="https://zgc.apihy.com/v1" required maxlength="250" spellcheck="false" aria-describedby="api-url-hint"><p id="api-url-hint">汇云模型列表地址为 /v1/models；这里填写用于调用的基础地址 /v1。</p></div>
@@ -303,43 +314,54 @@
             </form>
             <p id="ai-connection-status" class="preferences-feedback" role="status"></p>
           </section>
-          <section class="preferences-card" aria-labelledby="voice-settings-title">
-            <div class="preferences-card-heading"><div><h2 id="voice-settings-title">语音与播报</h2><p>ASR 收听 · TTS 播报</p></div><span class="preferences-tag">固定模型</span></div>
-            <details class="preferences-advanced"><summary>麦克风设置</summary>
-            <div class="preferences-field"><label for="settings-mic-device">麦克风输入设备</label><select id="settings-mic-device"><option value="">系统默认麦克风</option></select><button type="button" id="settings-mic-refresh">刷新麦克风列表</button><p id="settings-mic-hint">授权麦克风后，可选择具体设备。</p></div>
-            <label class="preference-switch" for="settings-mic-processing"><span><strong>麦克风音频增强</strong><small>默认关闭回声消除、降噪和自动增益，便于检查原始输入；需要时可开启。</small></span><input type="checkbox" id="settings-mic-processing"></label>
-            </details>
-            <form id="speech-config-form" autocomplete="off">
+          <section class="preferences-card" data-settings-section="voice" aria-labelledby="voice-settings-title" hidden>
+            <div class="preferences-card-heading"><h2 id="voice-settings-title">语音与播报</h2></div>
+            <nav class="preferences-subnav" aria-label="语音设置分类">
+              <a data-voice-tab="playback" href="#settings/voice" aria-current="page">播报体验</a>
+              <a data-voice-tab="microphone" href="#settings/voice/microphone">麦克风与识别</a>
+              <a data-voice-tab="service" href="#settings/voice/service">播报服务</a>
+            </nav>
+            <div data-voice-section="microphone" hidden>
+              <div class="preferences-field"><label for="settings-mic-device">麦克风输入设备</label><select id="settings-mic-device"><option value="">系统默认麦克风</option></select><button type="button" id="settings-mic-refresh">刷新麦克风列表</button><p id="settings-mic-hint">授权麦克风后，可选择具体设备。</p></div>
+              <label class="preference-switch" for="settings-mic-processing"><span><strong>麦克风音频增强</strong><small>控制回声消除、降噪和自动增益。</small></span><input type="checkbox" id="settings-mic-processing"></label>
+              <div class="preferences-field"><label for="settings-asr-model">本地语音识别</label><select id="settings-asr-model" disabled><option value="sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30" selected>本地 Zipformer · 流式中文识别</option></select><p>随后端自动启动，无需密钥；首次准备需要稍候。</p><button type="button" id="local-asr-check">检查本地 ASR 服务</button><p id="local-asr-status" role="status"></p></div>
+            </div>
+            <form id="speech-config-form" data-voice-section="service" autocomplete="off" hidden>
               <div class="preferences-field"><label for="speech-provider">TTS 服务商</label><select id="speech-provider"><option value="uniapi" selected>UniAPI · 使用已有账号（默认）</option><option value="dashscope">百炼官方 · 另需百炼账号</option></select></div>
-              <div class="preferences-field"><label for="settings-asr-model">ASR · 本地收听</label><select id="settings-asr-model" disabled><option value="sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30" selected>本地 Zipformer · 流式中文识别</option></select><p>随后端自动启动，无需密钥；首次准备需要稍候。</p><button type="button" id="local-asr-check">检查本地 ASR 服务</button><p id="local-asr-status" role="status"></p></div>
               <div class="preferences-field"><label for="settings-tts-model">TTS · 播报</label><select id="settings-tts-model"><option value="gemini-3.8-flash-lite-tts" selected>UniAPI · gemini-3.8-flash-lite-tts（固定）</option><option value="tts-1">UniAPI · tts-1（备用，曾上游满载）</option><option value="browser">浏览器语音播报（手动选择）</option></select><p id="speech-voice-note">云端音色固定为 Kore，模型不会自动切换。</p></div>
               <div id="cloud-speech-fields">
                 <div class="preferences-field" id="speech-workspace-field" hidden><label for="speech-workspace">百炼北京地域 Workspace ID</label><input id="speech-workspace" disabled maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9-]{0,79}" spellcheck="false" placeholder="在百炼控制台查看业务空间 ID"></div>
                 <div class="preferences-field"><label for="speech-key" id="speech-key-label">UniAPI API Key</label><input id="speech-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false" placeholder="可留空读取已配置的本机 UniAPI Key"><p id="speech-key-hint">留空可使用本机 UniAPI Key。</p></div>
               </div>
-              <p class="preferences-notice">保存不调用模型；云端识别和播报可能计费。停止或离页会取消等待与播放。</p>
+              <p class="preferences-notice">使用云端播报可能产生费用。</p>
               <div class="ai-actions"><button type="submit" id="speech-save">保存语音配置</button><button type="button" id="speech-disconnect" hidden>清除云端语音会话</button></div>
               <p id="speech-session-status" class="preferences-feedback" role="status">保存后即可使用所选语音模型。</p>
             </form>
-            <label class="preference-switch" for="settings-voice-enabled"><span><strong>朗读回答与指导</strong><small>拍摄页自动朗读助手回答，无需开启麦克风；关闭后仍可语音输入。</small></span><input type="checkbox" id="settings-voice-enabled" checked></label>
-            <div class="preferences-fields-row">
-              <div class="preferences-field"><label for="settings-voice-rate">播报语速</label><select id="settings-voice-rate"><option value="0.8">稍慢 · 0.8×</option><option value="1" selected>标准 · 1×</option><option value="1.2">稍快 · 1.2×</option></select></div>
-              <div class="preferences-field"><label for="settings-voice-volume">播报音量 <output id="settings-volume-label" for="settings-voice-volume">100%</output></label><input type="range" id="settings-voice-volume" min="0" max="1" step="0.1" value="1"></div>
+            <div data-voice-section="playback">
+              <label class="preference-switch" for="settings-voice-enabled"><span><strong>朗读回答与指导</strong><small>拍摄页自动朗读助手回答，无需开启麦克风。</small></span><input type="checkbox" id="settings-voice-enabled" checked></label>
+              <div class="preferences-fields-row">
+                <div class="preferences-field"><label for="settings-voice-rate">播报语速</label><select id="settings-voice-rate"><option value="0.8">稍慢 · 0.8×</option><option value="1" selected>标准 · 1×</option><option value="1.2">稍快 · 1.2×</option></select></div>
+                <div class="preferences-field"><label for="settings-voice-volume">播报音量 <output id="settings-volume-label" for="settings-voice-volume">100%</output></label><input type="range" id="settings-voice-volume" min="0" max="1" step="0.1" value="1"></div>
+              </div>
+              <div class="preferences-inline"><button type="button" id="settings-voice-preview">试听播报</button><p id="settings-voice-capability" class="preferences-caption"></p></div>
+              <p id="settings-voice-preview-status" class="preferences-feedback" role="status" aria-live="polite"></p>
             </div>
-            <div class="preferences-inline"><button type="button" id="settings-voice-preview">试听播报</button><p id="settings-voice-capability" class="preferences-caption"></p></div>
-            <p id="settings-voice-preview-status" class="preferences-feedback" role="status" aria-live="polite"></p>
           </section>
-          <section class="preferences-card" aria-labelledby="preview-settings-title">
-            <div class="preferences-card-heading"><div><h2 id="preview-settings-title">取景与拍摄</h2><p>设置自动应用到拍摄页，照片保留原始画面。</p></div></div>
+          <section class="preferences-card" data-settings-section="display" aria-labelledby="preview-settings-title">
+            <div class="preferences-card-heading"><h2 id="preview-settings-title">取景与拍摄</h2></div>
             <label class="preference-switch" for="grid-toggle"><span><strong>九宫格辅助线</strong><small>在实时取景和裁剪编辑中显示。</small></span><input type="checkbox" id="grid-toggle" checked></label>
             <label class="preference-switch" for="frame-toggle"><span><strong>数字裁剪框</strong><small>只控制框的显示，裁剪设置仍然生效。</small></span><input type="checkbox" id="frame-toggle" checked></label>
             <div class="preferences-field countdown-preference"><label for="settings-delay">拍摄倒计时</label><select id="settings-delay"><option value="0">立即拍摄</option><option value="3" selected>3 秒</option><option value="5">5 秒</option></select><p>与拍摄页的倒计时保持同步。</p></div>
           </section>
-          <section class="preferences-card" aria-labelledby="service-settings-title">
+          <section class="preferences-card" data-settings-section="status" aria-labelledby="service-settings-title" hidden>
             <div class="preferences-card-heading"><div><h2 id="service-settings-title">服务状态</h2><p>设备与当前选择的语音模型。</p></div><button type="button" id="settings-refresh">刷新状态</button></div>
             <dl class="preferences-status-list"><div><dt>摄像头 / 机械臂</dt><dd id="settings-device-status">正在获取状态…</dd></div><div><dt>后端模型模式</dt><dd id="settings-backend-mode">尚未获取</dd></div><div><dt>语音识别 ASR</dt><dd id="settings-asr-status">尚未获取</dd></div><div><dt>语音合成 TTS</dt><dd id="settings-tts-status">尚未获取</dd></div></dl>
-            <p class="preferences-caption">已选择不等于已连接；语音保存状态见上方。</p>
             <p id="settings-service-status" class="preferences-feedback" role="status"></p>
+            <div class="preferences-reset">
+              <h3>浏览器偏好</h3>
+              <p id="settings-save-status" class="preferences-caption" role="status">普通偏好自动保存在当前浏览器。</p>
+              <button type="button" id="reset-preferences">恢复默认偏好</button>
+            </div>
           </section>
         </div>
       </div>

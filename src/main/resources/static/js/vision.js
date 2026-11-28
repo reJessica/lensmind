@@ -58,6 +58,53 @@ export function compositionRegions(target) {
     : [{ x: COMPOSITION_X[target.composition] - COMPOSITION_HALF_WIDTH, y: 0, width: COMPOSITION_HALF_WIDTH * 2, height: 1 }];
 }
 
+export function referencePersonBox(plan) {
+  const target = plan.cells.length ? { cells: plan.cells } : { composition: plan.composition };
+  const box = plan.personBox;
+  if (box && typeof box === 'object' && [box.x, box.y, box.width, box.height].every(Number.isFinite)
+      && box.x >= 0 && box.y >= 0 && box.width >= .05 && box.height >= .10
+      && box.x + box.width <= 1 && box.y + box.height <= 1 && mostlyInArea([box], target)) return box;
+  const regions = compositionRegions(target);
+  const area = {
+    left: Math.min(...regions.map(region => region.x)), right: Math.max(...regions.map(region => region.x + region.width)),
+    top: Math.min(...regions.map(region => region.y)), bottom: Math.max(...regions.map(region => region.y + region.height)),
+  };
+  const midpoint = { x: (area.left + area.right) / 2, y: (area.top + area.bottom) / 2 };
+  const shift = target.cells ? gridPosition(midpoint, target.cells) : { x: 0, y: 0 };
+  const x = midpoint.x + shift.x, y = midpoint.y + shift.y;
+  const width = Math.min(plan.framing === 'full' ? .28 : .38, area.right - area.left);
+  const height = Math.min(plan.framing === 'full' ? .88 : .68, area.bottom - area.top);
+  const fallback = {
+    x: Math.max(area.left, Math.min(area.right - width, x - width / 2)),
+    y: Math.max(area.top, Math.min(area.bottom - height, y - height / 2)), width, height,
+  };
+  if (mostlyInArea([fallback], target)) return fallback;
+  return regions[0];
+}
+
+export function referencePositionCue(analysis, id, box, now = Date.now()) {
+  if (analysis?.status === 'error') return '人物检测暂不可用，恢复后可继续。';
+  if (!analysis?.timestamp || now - analysis.timestamp > MAX_FRAME_AGE) return '正在等待实时画面。';
+  const tracked = analysis.people?.find(person => person.id === id);
+  const person = tracked?.person;
+  if (!person) return '请走进画面里的虚线人物框。';
+  const goal = center(box);
+  const current = center(person);
+  const dx = goal.x - current.x, dy = goal.y - current.y;
+  if (Math.abs(dx) > Math.max(.05, box.width * .2)) {
+    // 预览不镜像，被摄者面向镜头。
+    return `请往你自己的${dx > 0 ? '左' : '右'}边挪一点。`;
+  }
+  if (person.height < box.height * .58) return '请朝镜头靠近一点，让人物填到虚线框里。';
+  if (person.width > box.width * 1.65 || person.height > box.height * 1.5) return '请稍微往后退，让人物落在虚线框里。';
+  if (Math.abs(dy) > Math.max(.06, box.height * .2)) {
+    return `请把取景框${dy > 0 ? '往上' : '往下'}拖一点，让人物对准虚线框。`;
+  }
+  const overlap = intersectionArea(person, box);
+  return overlap >= person.width * person.height * .55 && overlap >= box.width * box.height * .32
+    ? '' : '请对齐虚线框，让身体大部分进入框内。';
+}
+
 function mostlyInArea(boxes, target) {
   const regions = compositionRegions(target);
   const area = boxes.reduce((total, box) => total + box.width * box.height, 0);

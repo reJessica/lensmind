@@ -87,13 +87,14 @@ function needsImage(text) {
   return /画面|当前取景|背景|参考图|示例图|这张图|我的(?:姿势|表情|站位|动作)|帮我看|给我动作建议/.test(text);
 }
 
-export function setupAi(getScene, onAdvice) {
+export function setupAi(getScene, onAdvice, { describePlan, applyPlan, clearPlan }) {
   const connectionStatus = $('ai-connection-status');
   const status = $('ai-status');
   const tools = $('analysis-tools');
   let connection = null;
   let changingConnection = false;
   let reference = '';
+  let referencePlan = null;
   let referenceVersion = 0;
   let loadingReference = false;
   let pending = null;
@@ -129,7 +130,7 @@ export function setupAi(getScene, onAdvice) {
 
   function updateAnalyze() {
     $('ai-analyze').disabled = !!pending || loadingReference;
-    $('ai-analyze').textContent = reference ? '对照参考图分析' : '分析当前画面';
+    $('ai-analyze').textContent = reference ? '生成拍摄方案' : '分析当前画面';
   }
 
   function cancel(message) {
@@ -184,6 +185,9 @@ export function setupAi(getScene, onAdvice) {
 
   function setReference(data, filename = '') {
     reference = data;
+    referencePlan = null;
+    $('ai-reference-plan').hidden = true;
+    clearPlan();
     const thumbnail = $('ai-thumbnail');
     if (data) thumbnail.src = data;
     else thumbnail.removeAttribute('src');
@@ -237,37 +241,61 @@ export function setupAi(getScene, onAdvice) {
     status.textContent = '已移除参考图。';
   });
 
-  async function analyze(prompt, { assistant = false, pose = false, localRequest = false } = {}) {
-    if (!assistant || pose) tools.open = true;
+  async function analyze(prompt, { assistant = false, pose = false, localRequest = false, plan = false } = {}) {
+    if (!assistant || pose || plan) tools.open = true;
     if (pending) cancel('正在处理最新一条指令…');
-    const withImage = !localRequest && (!assistant || pose || needsImage(prompt));
-    if ((withImage && loadingReference) || changingConnection) {
+    if ((plan && loadingReference) || changingConnection) {
       status.textContent = '请等待当前操作完成，再请求分析。';
+      return;
+    }
+    if (plan && !reference) {
+      status.textContent = '请先选择参考图，再生成拍摄方案。';
       return;
     }
     if (!connection) {
       status.textContent = '看图分析需要先到「设置」连接模型。语音和文字的基础指令仍可使用。';
       return;
     }
+    if (plan && connection.referencePlan !== true) {
+      status.textContent = '当前 LensMind 服务版本较旧。请用新版启动项目，再刷新网页生成拍摄方案。';
+      return;
+    }
+    const withImage = !plan && !localRequest && (!assistant || pose || needsImage(prompt));
     const source = withImage ? getScene() : null;
-    if (!source && !assistant) {
+    if (!source && !assistant && !plan) {
       status.textContent = '请先点「开启电脑摄像头」，等画面出现后再分析。';
       return;
     }
-    const active = { controller: new AbortController(), localRequest, sceneOnly: !assistant || pose };
+    const active = { controller: new AbortController(), localRequest, sceneOnly: !plan && (!assistant || pose) };
     const initialSceneVersion = sceneVersion;
     pending = active;
     updateAnalyze();
     $('ai-result').hidden = true;
-    status.textContent = localRequest ? '' : source ? (reference ? '正在对照当前画面和参考图…' : '正在分析当前画面…') : '模型正在理解你的输入…';
+    if (plan) {
+      referencePlan = null;
+      $('ai-reference-plan').hidden = true;
+    }
+    status.textContent = plan ? '正在根据参考图生成拍摄方案…' : localRequest ? ''
+      : source ? '正在分析当前画面…' : '模型正在理解你的输入…';
     const capturedAt = new Date().toLocaleTimeString('zh-CN', { hour12: false });
     try {
       const scene = source ? jpeg(source.source, source.width, source.height, source.x, source.y) : null;
       const result = await request('analyze', 'POST', {
-        connectionId: connection.id, prompt, ...(assistant && { mode: 'assistant' }),
-        ...(scene && { scene, ...(reference && { reference }) }),
+        connectionId: connection.id, prompt,
+        ...(plan ? { mode: 'reference-plan', reference } : assistant ? { mode: 'assistant' } : {}),
+        ...(scene && { scene }),
       }, active.controller.signal);
       if (pending !== active) return;
+      if (plan) {
+        const description = describePlan(result.referencePlan);
+        if (!description) throw new Error('未收到完整的拍摄方案，请重新生成。');
+        referencePlan = result.referencePlan;
+        $('ai-reference-settings').textContent = description;
+        $('ai-reference-tip').textContent = referencePlan.poseTip;
+        $('ai-reference-plan').hidden = false;
+        status.textContent = '';
+        return;
+      }
       pending = null;
       updateAnalyze();
       if (localRequest && !result.feedback && !result.controlPlan) return;
@@ -292,7 +320,10 @@ export function setupAi(getScene, onAdvice) {
     }
   }
 
-  $('ai-analyze').addEventListener('click', () => analyze($('command-input').value.trim()));
+  $('ai-analyze').addEventListener('click', () => analyze($('command-input').value.trim(), { plan: Boolean(reference) }));
+  $('ai-apply-reference').addEventListener('click', () => {
+    if (referencePlan) applyPlan(referencePlan);
+  });
   refreshConnection();
   return {
     cancel,

@@ -69,10 +69,35 @@ export function savePreferences(storage, value) {
 
 export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceAvailable, speechAvailable }) {
   const $ = id => document.getElementById(id);
+  const sections = [...document.querySelectorAll('[data-settings-section]')];
+  const voiceSections = [...document.querySelectorAll('[data-voice-section]')];
+  const tabs = document.querySelectorAll('[data-settings-tab]');
+  const voiceTabs = document.querySelectorAll('[data-voice-tab]');
+  let selectedSection, selectedVoiceSection;
   let storage;
   try { storage = window.localStorage; } catch { /* 隐私模式下仅使用内存。 */ }
   let preferences = readPreferences(storage);
   let refreshing = false;
+
+  function selectSection(section, voiceSection) {
+    const nextSection = sections.some(panel => panel.dataset.settingsSection === section) ? section : 'display';
+    const nextVoiceSection = nextSection === 'voice' && voiceSections.some(panel => panel.dataset.voiceSection === voiceSection)
+      ? voiceSection : 'playback';
+    if (selectedSection === nextSection && selectedVoiceSection === nextVoiceSection) return false;
+    selectedSection = nextSection;
+    selectedVoiceSection = nextVoiceSection;
+    for (const panel of sections) panel.hidden = panel.dataset.settingsSection !== selectedSection;
+    for (const panel of voiceSections) panel.hidden = panel.dataset.voiceSection !== selectedVoiceSection;
+    for (const tab of tabs) {
+      if (tab.dataset.settingsTab === selectedSection) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    }
+    for (const tab of voiceTabs) {
+      if (tab.dataset.voiceTab === selectedVoiceSection) tab.setAttribute('aria-current', 'page');
+      else tab.removeAttribute('aria-current');
+    }
+    return true;
+  }
 
   function matchProvider() {
     const base = $('ai-base-url').value.replace(/\/$/, '');
@@ -268,6 +293,7 @@ export function setupSettings({ onChange, onSpeechChange, onPreviewVoice, voiceA
   refreshMicrophones();
   return {
     get preferences() { return preferences; },
+    selectSection,
     refresh,
     refreshMicrophones,
     updateDevice(device, online) {

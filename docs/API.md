@@ -119,11 +119,12 @@
 
 | 方法与路径 | 输入 | 成功结果 |
 | --- | --- | --- |
-| `GET /api/ai/session` | 无 | `{ "connected": false }` 或连接状态、`id`、`model`、`host`、`expiresAt` |
+| `GET /api/ai/session` | 无 | `connected`，已连接时另有 `id`、`model`、`host`、`expiresAt`，支持参考图方案的后端还返回 `referencePlan: true` |
 | `POST /api/ai/session` | JSON，必填 `baseUrl`、`model`、`apiKey` | 用生成的色块测试视觉接口后返回连接状态和标识，密钥不在响应中 |
 | `DELETE /api/ai/session` | 无 | `{ "connected": false }`，只清除摄影连接，保留独立语音会话 |
 | `POST /api/ai/analyze` | JSON，必填 `connectionId`、`scene`，可选 `prompt`、`reference` | `summary`、`observations`、`targets`、`steps` |
 | `POST /api/ai/analyze`（`mode: "assistant"`） | 必填 `connectionId` 和非空 `prompt`，看图时可附 `scene` 与可选 `reference` | 同上，另可含 `settings` |
+| `POST /api/ai/analyze`（`mode: "reference-plan"`） | 必填 `connectionId`、`reference`，可选 `prompt` | `{ "referencePlan": { … } }` |
 
 `settings` 可包括 `framing`（`half/full/any`）、`composition`（`left/center/right`）、`cells`（格号数组）、`part: "head"`、`zoom`（`in/out`）和可选的 `ratio`（`original/1:1/4:3/3:4/16:9/9:16`，原有调用兼容）。仅对应用户明确要求的画面设置。常用且明确的目标、景别、比例和放大缩小由页面直接应用，模型回传的设置不会覆盖它们。等待模型时手动调整了裁剪框，较晚返回的比例和缩放也不会覆盖手调结果。快门、停止、机位等操作由前端处理。纯文字请求不需要摄像头，已连接的模型收到的是最终转写文字或用户提交的文字。
 
@@ -144,6 +145,27 @@
 `cells` 是期望区域，按画面从左上到右下逐行编号 0～8。当前观测位置用 `observations` 单独表示。返回建议用于展示和可选的浏览器朗读，不调用控制端或触发拍照。摄影助手的文字、语音和分析按钮共用一个输入。连接模型并开启摄像头后，主动发出的看图或动作建议请求使用此接口，自动构图播报仍使用本机的 `/api/vision/person`。停止、关闭相机或切换参考图时页面会丢弃待返回的建议。已发送给服务商的请求仍可能处理完成。现有本机人物检测、拍摄和设备接口保持兼容。
 
 错误返回 `{ "message": "…" }`，其中 400 表示输入无效或域名未启用，403 表示来源不符合本机要求，409 表示会话过期或连接已变更，413 表示请求过大，415 表示非 JSON 请求，502 表示服务商拒绝请求或响应无效，503 表示额度或限流，504 表示超时。错误不会把服务商原始响应透传到浏览器。
+
+### 参考图拍摄方案
+
+参考图方案只将参考图和可选说明发送给视觉模型，生成时无需实时取景。页面通过模型会话响应中的 `referencePlan: true` 识别后端能力。后端不支持时会提示使用新版启动项目。普通分析和助手请求继续使用原格式。应用方案时页面需要实时取景和已就绪的控制服务。
+
+```json
+{
+  "referencePlan": {
+    "ratio": "1:1",
+    "framing": "half",
+    "composition": null,
+    "cells": [4, 5, 7, 8],
+    "personBox": { "x": 0.45, "y": 0.35, "width": 0.52, "height": 0.62 },
+    "poseTip": "请放松肩膀，轻轻侧一点脸。"
+  }
+}
+```
+
+`ratio` 和 `framing` 使用上述设置枚举。标准构图用 `composition` 和空数组 `cells`；九宫格方案用 `composition: null` 和非空 `cells`。人物框基于最终裁剪画幅，左上角为原点，横向向右、纵向向下，位置和宽高均为 0～1 的归一化比例。无有效人物框时，页面按目标构图区域估算站位框。模型返回缺少画幅、景别、构图或动作提示时，返回 502。
+
+应用后由本机视觉实时更新单个人物的站位提示。多人同框时可选人物编号切换指导对象。人物对齐后给出一条姿态提示，通过「已完成」确认。结束指导、切换手动、停止、断连、移除或更换参考图均结束本轮指导。接口只返回拍摄设置和提示，不生成机械臂计划、不触发快门；引导框仅在取景中显示。
 
 ## 固定模型语音会话
 
