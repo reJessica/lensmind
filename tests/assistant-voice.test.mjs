@@ -43,20 +43,21 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
   const track = Object.assign(new EventTarget(), { stop() {} });
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }) } } });
   const originalTimeout = globalThis.setTimeout;
-  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0, deviceState = 'IDLE';
+  let attempts = 0, played = 0, fail = false, lastAudio, movementRequests = 0, deviceState = 'IDLE', offline = false, holdSpeech = false, releaseSpeech, ttsSignal;
+  const statusPolls = [];
   const ttsTexts = [];
   const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
   Object.assign(globalThis, {
     document: doc, window: win, location: { hash: '#studio' },
     Image: class {}, Option: class { constructor(text, value) { this.text = text; this.value = value; } },
     Audio: class { constructor() { lastAudio = this; } pause() {} async play() { played++; } },
-    setInterval: () => 0, cancelAnimationFrame() {}, requestAnimationFrame: () => 0,
+    setInterval: (callback, delay) => { if (delay === 4000) statusPolls.push(callback); return 0; }, cancelAnimationFrame() {}, requestAnimationFrame: () => 0,
     setTimeout: (...args) => { const timer = originalTimeout(...args); timer.unref(); return timer; },
     fetch: async (path, options = {}) => {
       if (path === '/api/ai/session') return response({ connected: true, id: 'llm', model: 'qwen3.5-27b', host: 'example.test', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/ai/speech/session') return response({ configured: true, id: 'tts', provider: 'uniapi', asr: 'browser', tts: 'gemini-3.8-flash-lite-tts', expiresAt: new Date(Date.now() + 600000).toISOString() });
       if (path === '/api/device/calibration') return response({ required: false, ready: true });
-      if (path === '/api/device/status') return response({ connected: true, mode: 'MOCK', state: deviceState, x: 0, y: 0 });
+      if (path === '/api/device/status') return offline ? response({ message: '控制服务未连接' }, 503) : response({ connected: true, mode: 'MOCK', state: deviceState, x: 0, y: 0 });
       if (path === '/api/device/move') { movementRequests++; return response({ connected: true, mode: 'MOCK', state: 'IDLE' }); }
       if (path === '/api/ai/analyze') {
         const motion = JSON.parse(options.body).prompt === '相机向左一点';
@@ -67,6 +68,7 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
       }
       if (path === '/api/ai/speech/tts') {
         attempts++; ttsTexts.push(JSON.parse(options.body).text);
+        if (holdSpeech) { ttsSignal = options.signal; return new Promise(done => { releaseSpeech = () => done(new Response(new Blob(['audio']), { headers: { 'Content-Type': 'audio/wav' } })); }); }
         return fail ? response({ message: '上游负载已饱和' }, 503) : new Response(new Blob(['audio']), { headers: { 'Content-Type': 'audio/wav' } });
       }
       throw Error(`未预期的请求 ${path}`);
@@ -125,10 +127,22 @@ test('摄影助手独立朗读文字回答，失败不关闭后续播报，关�
     deviceState = 'MOVING';
     await ask('拍摄');
     assert.equal(get('gallery-count').textContent, '02', '控制端运动状态仍应拦截');
+    deviceState = 'IDLE'; offline = true; holdSpeech = true;
+    await ask();
+    assert.equal(get('voice-status').textContent, '正在合成语音…');
+    await statusPolls[0](); await settle();
+    assert.equal(ttsSignal.aborted, false, '控制服务断连不能取消正在合成的回答');
+    releaseSpeech(); await settle();
+    assert.equal(played, 6, '设备断连时云端晚到音频仍应播放');
+    lastAudio.onended();
+    offline = false; holdSpeech = false; deviceState = 'STOPPED';
+    await statusPolls[0](); await settle();
+    await ask();
+    assert.equal(played, 7, '机械臂停止锁定不应禁止后续主动提问的朗读');
     globalThis.location.hash = '#gallery';
     win.dispatchEvent(new Event('hashchange'));
     await ask();
-    assert.equal(attempts, 6, '离开拍摄页不发起新播报');
+    assert.equal(attempts, 8, '离开拍摄页不发起新播报');
   } finally {
     win.dispatchEvent(new Event('pagehide'));
     await settle();

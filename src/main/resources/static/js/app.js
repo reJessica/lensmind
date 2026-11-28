@@ -628,8 +628,8 @@ async function pollStatus() {
     const wasOnline = state.online;
     state.online = false;
     state.stopResetConfirmed = false;
-    // 设置页试听独立于设备连接，仿真断连不应打断音频。
-    if (state.page !== 'settings') voice.reset();
+    // 设备断连暂停构图与拍摄，用户问答的合成/播放继续独立完成。
+    state.guidanceRequested = false;
     cancelCapture();
     $('service-status').textContent = '控制服务未连接';
     $('service-dot').classList.add('offline');
@@ -1112,17 +1112,19 @@ function applyAssistantSettings(settings, cropChanged) {
 }
 
 function receiveAdvice(result, { pose, applySettings, cropChanged, sceneChanged }) {
-  const canApply = state.page === 'studio' && !document.hidden && !state.stopped && !state.capturePending && !state.deviceAction;
+  const canReply = state.page === 'studio' && !document.hidden;
+  if (!canReply) return null;
+  const canApply = !state.stopped && !state.capturePending && !state.deviceAction;
   const confirmation = applySettings && result.settings
     ? (canApply ? applyAssistantSettings(result.settings, cropChanged) : '') : null;
   if (confirmation !== null) {
     const summary = confirmation ? `当前设置：${confirmation}。` : cropChanged ? '取景已手动调整，继续使用当前设置。' : '当前画幅和构图设置保持原样。';
-    if (canApply) voice.speak(result.feedback || summary);
+    voice.speak(result.feedback || summary);
     return summary;
   }
-  if (!canApply || sceneChanged) return null;
+  if (sceneChanged) return null;
   const text = result.feedback || result.steps[0] || result.summary;
-  if (pose && !state.guidePending) showGuide(text, true);
+  if (pose && canApply && !state.guidePending) showGuide(text, true);
   else if (!state.guidePending || result.feedback) {
     const hint = /(?:现在|可以|直接|开始)\s*拍(?:照|摄|了)/.test(result.summary) ? currentPositionHint() : '';
     voice.speak(result.feedback || hint || result.summary);
@@ -1221,7 +1223,7 @@ function setVoiceEnabled(enabled, message = '') {
 }
 
 function syncVoicePreference(preferences = settings.preferences) {
-  const enabled = state.page === 'studio' && !document.hidden && !state.stopped && preferences.voiceEnabled;
+  const enabled = state.page === 'studio' && !document.hidden && preferences.voiceEnabled;
   if (voice.enabled !== enabled) setVoiceEnabled(enabled);
 }
 
