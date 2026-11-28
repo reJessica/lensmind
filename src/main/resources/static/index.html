@@ -26,6 +26,7 @@
       <div class="site-actions">
         <button id="help-button" type="button">使用说明</button>
         <button id="stop-button" class="stop-button" type="button" data-stop="ready" aria-keyshortcuts="Escape" hidden><span data-stop-icon aria-hidden="true">■</span> <span data-stop-label>停止</span> <kbd aria-hidden="true">Esc</kbd></button>
+        <button id="so101-cancel" type="button" hidden>取消操控</button>
       </div>
     </div>
   </header>
@@ -139,7 +140,7 @@
               <h2 id="assistant-title">摄影助手</h2>
               <a id="ai-open" class="flow-button" href="#settings">模型设置</a>
             </div>
-            <p class="assistant-status" id="ai-model-status">基础模式 · 语音和文字指令可用</p>
+            <p class="assistant-status" id="ai-model-status" hidden></p>
             <p class="assistant-status" id="voice-status" role="status" hidden></p>
             <p class="assistant-status" id="mic-status" role="status" hidden></p>
             <div class="preview-caption" id="guide-panel" hidden><span id="guide-text" role="status"></span><button id="guide-done" class="text-button" hidden>已完成，继续 →</button></div>
@@ -186,6 +187,33 @@
           <aside class="settings-panel panel" aria-label="拍摄设置">
             <div class="panel-title"><h2>快门与画幅</h2></div>
             <div class="settings-content">
+              <section id="so101-torque-controls" class="setting-group calibration-task" aria-labelledby="so101-torque-title" hidden>
+                <div class="setting-title"><h3 id="so101-torque-title">实机操控</h3></div>
+                <p id="so101-torque-status" role="status"></p>
+                <button id="so101-release" type="button">结束操控并卸力</button>
+              </section>
+              <section id="calibration-task" class="setting-group calibration-task" aria-labelledby="calibration-title" hidden>
+                <div class="setting-title"><h3 id="calibration-title">拍摄前校准 SO-101</h3></div>
+                <p id="calibration-status" role="status"></p>
+                <button id="calibration-start" type="button">开始校准</button>
+                <div id="neutral-position" hidden>
+                  <p id="neutral-position-status" role="status">请手动摆到中立位并保持。</p>
+                  <button id="neutral-position-confirm" type="button">已保持中立位</button>
+                  <button id="so101-arm" type="button" hidden>启用实机语音控制（舵机上扭矩）</button>
+                  <p id="so101-voice-status" role="status" hidden></p>
+                </div>
+                <div id="calibration-steps" hidden>
+                  <ol>
+                    <li>退出占用这台机械臂串口的控制程序。在连接机械臂的电脑上运行下方命令，托稳手臂后输入 <code>CALIBRATE</code>。</li>
+                    <li>按终端提示将关节放到安全活动范围的中间位置，按 Enter。</li>
+                    <li>缓慢手动摆动需采样的关节，到达安全范围后按 Enter 完成记录。腕部旋转轴无需采样。</li>
+                    <li>看到终端提示校准完成后，点击「核验结果」。</li>
+                  </ol>
+                  <pre><code id="calibration-command"></code></pre>
+                  <button id="calibration-copy" type="button">复制命令</button>
+                  <button id="calibration-verify" type="button">核验结果</button>
+                </div>
+              </section>
               <div class="shutter-controls">
                 <section class="capture-settings"><label for="delay">拍摄倒计时</label><select id="delay"><option value="3">3 秒</option><option value="0">立即拍摄</option><option value="5">5 秒</option></select></section>
                 <button id="capture-button" type="button" class="capture-button"><span aria-hidden="true">◉</span> 拍一张照片</button>
@@ -243,8 +271,8 @@
       </header>
       <div class="preferences-layout">
         <aside class="preferences-overview">
-          <h2>准备好你的摄影助手</h2>
-          <p>连接支持图片输入的模型后，可以咨询构图、灯光和人物动作。</p>
+          <h2>当前连接</h2>
+          <p>模型、语音与拍摄偏好。</p>
           <div class="connection-reading"><span id="settings-connection-badge">未连接</span><p id="settings-model-status" role="status">基础指令仍可使用。</p></div>
           <p class="preferences-caption">普通偏好自动保存在当前浏览器。API 密钥只用于本机临时连接。</p>
           <button type="button" id="reset-preferences" class="text-button">恢复默认偏好</button>
@@ -254,35 +282,43 @@
           <section class="preferences-card" aria-labelledby="model-settings-title">
             <div class="preferences-card-heading"><div><h2 id="model-settings-title">模型连接</h2><p>文字咨询与画面分析共用此连接。</p></div><span class="preferences-tag">多模态</span></div>
             <form id="ai-connect-form" autocomplete="off">
-              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="recommended">推荐 · Qwen3.5 Flash 固定快照</option><option value="existing">现有 · 汇云 Qwen3.5-27B</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select><p>预设锁定地址和模型；修改只填入表单，连接需手动确认。</p></div>
+              <div class="preferences-field"><label for="llm-profile">LLM / 视觉模型方案</label><select id="llm-profile"><option value="existing" selected>默认 · 汇云 Qwen3.5-27B</option><option value="recommended">百炼 · Qwen3.5 Flash 固定快照</option><option value="campus">校园 · 致远一号 qwen</option><option value="custom">自定义 OpenAI 兼容接口</option></select><p>选择方案后点击连接。</p></div>
+              <details class="preferences-advanced" id="model-advanced"><summary>接口与模型详情</summary>
               <div class="preferences-field" id="custom-provider-field" hidden><label for="ai-provider">API 服务商</label><select id="ai-provider"><option value="apihy">汇云 · 团队接口</option><option value="uniapi">UniAPI</option><option value="sjtu">上海交大 · 致远一号</option><option value="openai">OpenAI</option><option value="openrouter">OpenRouter</option><option value="siliconflow">硅基流动</option><option value="dashscope">阿里云百炼</option><option value="custom">自定义地址</option></select></div>
-              <div class="preferences-field"><label for="ai-base-url">API 基础地址</label><input type="url" id="ai-base-url" value="https://dashscope.aliyuncs.com/compatible-mode/v1" required maxlength="250" spellcheck="false" aria-describedby="api-url-hint"><p id="api-url-hint">使用 HTTPS 基础地址，例如以 /v1 结尾；无需填写 /models。</p></div>
-              <div class="preferences-field"><label for="ai-model">视觉模型名称</label><input type="text" id="ai-model" value="qwen3.5-flash-2026-02-23" required maxlength="120" spellcheck="false" placeholder="填写服务商已开通的视觉模型"></div>
-              <div class="preferences-field"><label for="ai-key">API 密钥</label><input type="password" id="ai-key" required autocomplete="new-password" maxlength="2048" spellcheck="false" placeholder="填写当前服务商的 Key" aria-describedby="api-key-hint"><p id="api-key-hint">提交后清空输入；密钥仅由本机服务临时保管，最多 30 分钟。</p></div>
-              <p class="preferences-notice">只有点击「测试并连接」才会验证新配置，并发送一张测试色块，可能产生少量费用。修改表单不会替换现有连接。</p>
+              <div class="preferences-field"><label for="ai-base-url">API 基础地址</label><input type="url" id="ai-base-url" value="https://zgc.apihy.com/v1" required maxlength="250" spellcheck="false" aria-describedby="api-url-hint"><p id="api-url-hint">汇云模型列表地址为 /v1/models；这里填写用于调用的基础地址 /v1。</p></div>
+              <div class="preferences-field"><label for="ai-model">视觉模型名称</label><input type="text" id="ai-model" value="qwen3.5-27b" required maxlength="120" spellcheck="false" placeholder="填写服务商已开通的视觉模型"></div>
+              </details>
+              <div class="preferences-field"><label for="ai-key">API 密钥</label><input type="password" id="ai-key" required autocomplete="new-password" maxlength="2048" spellcheck="false" placeholder="填写当前服务商的 Key" aria-describedby="api-key-hint"><p id="api-key-hint">提交后清空输入，连接保留 30 分钟。</p></div>
+              <p class="preferences-notice">连接测试会发送测试图片，可能计费。</p>
               <div class="ai-actions"><button type="submit" id="ai-connect" class="flow-button flow-primary">测试并连接</button><button type="button" id="ai-disconnect" hidden>断开连接</button></div>
             </form>
             <p id="ai-connection-status" class="preferences-feedback" role="status"></p>
           </section>
           <section class="preferences-card" aria-labelledby="voice-settings-title">
-            <div class="preferences-card-heading"><div><h2 id="voice-settings-title">语音与播报</h2><p>可分别选择识别和播报方式；麦克风仍在拍摄页手动开启。</p></div><span class="preferences-tag">固定模型</span></div>
+            <div class="preferences-card-heading"><div><h2 id="voice-settings-title">语音与播报</h2><p>ASR 收听 · TTS 播报</p></div><span class="preferences-tag">固定模型</span></div>
+            <details class="preferences-advanced"><summary>麦克风设置</summary>
+            <div class="preferences-field"><label for="settings-mic-device">麦克风输入设备</label><select id="settings-mic-device"><option value="">系统默认麦克风</option></select><button type="button" id="settings-mic-refresh">刷新麦克风列表</button><p id="settings-mic-hint">授权麦克风后，可选择具体设备。</p></div>
+            <label class="preference-switch" for="settings-mic-processing"><span><strong>麦克风音频增强</strong><small>默认关闭回声消除、降噪和自动增益，便于检查原始输入；需要时可开启。</small></span><input type="checkbox" id="settings-mic-processing"></label>
+            </details>
             <form id="speech-config-form" autocomplete="off">
-              <div class="preferences-field"><label for="settings-asr-model">ASR · 语音识别</label><select id="settings-asr-model"><option value="browser">浏览器语音识别</option><option value="fun-asr-realtime-2026-02-28">百炼 Fun-ASR · 2026-02-28 固定快照</option></select></div>
-              <div class="preferences-field"><label for="settings-tts-model">TTS · 语音合成</label><select id="settings-tts-model"><option value="browser">浏览器语音播报</option><option value="qwen-audio-3.1-tts-flash">百炼 Qwen-Audio 3.1 TTS Flash</option></select><p>云端音色固定为 longanhuan_v3.1，模型不会自动升级或轮换。</p></div>
-              <div id="cloud-speech-fields" hidden>
-                <div class="preferences-field"><label for="speech-workspace">百炼北京地域 Workspace ID</label><input id="speech-workspace" maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9-]{0,79}" spellcheck="false" placeholder="在百炼控制台查看业务空间 ID"></div>
-                <div class="preferences-field"><label for="speech-key">百炼北京地域 API Key</label><input id="speech-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false" placeholder="独立填写，不会使用汇云或 UniAPI 的密钥"><p>仅由后端临时保管 30 分钟。已有同一业务空间会话时，留空可沿用其密钥。</p></div>
+              <div class="preferences-field"><label for="speech-provider">TTS 服务商</label><select id="speech-provider"><option value="uniapi" selected>UniAPI · 使用已有账号（默认）</option><option value="dashscope">百炼官方 · 另需百炼账号</option></select></div>
+              <div class="preferences-field"><label for="settings-asr-model">ASR · 本地收听</label><select id="settings-asr-model" disabled><option value="sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30" selected>本地 Zipformer · 流式中文识别</option></select><p>固定本地识别，无需密钥；使用前启动 ASR 服务。</p><button type="button" id="local-asr-check">检查本地 ASR 服务</button><p id="local-asr-status" role="status"></p></div>
+              <div class="preferences-field"><label for="settings-tts-model">TTS · 播报</label><select id="settings-tts-model"><option value="gemini-3.8-flash-lite-tts" selected>UniAPI · gemini-3.8-flash-lite-tts（固定）</option><option value="tts-1">UniAPI · tts-1（备用，曾上游满载）</option><option value="browser">浏览器语音播报（手动选择）</option></select><p id="speech-voice-note">云端音色固定为 Kore，模型不会自动切换。</p></div>
+              <div id="cloud-speech-fields">
+                <div class="preferences-field" id="speech-workspace-field" hidden><label for="speech-workspace">百炼北京地域 Workspace ID</label><input id="speech-workspace" disabled maxlength="80" pattern="[a-zA-Z0-9][a-zA-Z0-9-]{0,79}" spellcheck="false" placeholder="在百炼控制台查看业务空间 ID"></div>
+                <div class="preferences-field"><label for="speech-key" id="speech-key-label">UniAPI API Key</label><input id="speech-key" type="password" maxlength="2048" autocomplete="new-password" spellcheck="false" placeholder="可留空读取已配置的本机 UniAPI Key"><p id="speech-key-hint">留空可使用本机 UniAPI Key。</p></div>
               </div>
-              <p class="preferences-notice">保存配置不调用模型；启用云端后，录音和试听会发送至百炼并可能计费。首版断句后上传，合成完整短句后播放；浏览器与云端之间不自动回退。点击停止、离开拍摄页时取消等待与播放。</p>
+              <p class="preferences-notice">保存不调用模型；云端识别和播报可能计费。停止或离页会取消等待与播放。</p>
               <div class="ai-actions"><button type="submit" id="speech-save">保存语音配置</button><button type="button" id="speech-disconnect" hidden>清除云端语音会话</button></div>
-              <p id="speech-session-status" class="preferences-feedback" role="status">云端语音尚未配置。浏览器语音可独立使用。</p>
+              <p id="speech-session-status" class="preferences-feedback" role="status">保存后即可使用所选语音模型。</p>
             </form>
-            <label class="preference-switch" for="settings-voice-enabled"><span><strong>语音指导播报</strong><small>开启麦克风后朗读指导；关闭后仍可语音输入。</small></span><input type="checkbox" id="settings-voice-enabled" checked></label>
+            <label class="preference-switch" for="settings-voice-enabled"><span><strong>朗读回答与指导</strong><small>拍摄页自动朗读助手回答，无需开启麦克风；关闭后仍可语音输入。</small></span><input type="checkbox" id="settings-voice-enabled" checked></label>
             <div class="preferences-fields-row">
               <div class="preferences-field"><label for="settings-voice-rate">播报语速</label><select id="settings-voice-rate"><option value="0.8">稍慢 · 0.8×</option><option value="1" selected>标准 · 1×</option><option value="1.2">稍快 · 1.2×</option></select></div>
               <div class="preferences-field"><label for="settings-voice-volume">播报音量 <output id="settings-volume-label" for="settings-voice-volume">100%</output></label><input type="range" id="settings-voice-volume" min="0" max="1" step="0.1" value="1"></div>
             </div>
             <div class="preferences-inline"><button type="button" id="settings-voice-preview">试听播报</button><p id="settings-voice-capability" class="preferences-caption"></p></div>
+            <p id="settings-voice-preview-status" class="preferences-feedback" role="status" aria-live="polite"></p>
           </section>
           <section class="preferences-card" aria-labelledby="preview-settings-title">
             <div class="preferences-card-heading"><div><h2 id="preview-settings-title">取景与拍摄</h2><p>设置自动应用到拍摄页，照片保留原始画面。</p></div></div>
@@ -291,9 +327,9 @@
             <div class="preferences-field countdown-preference"><label for="settings-delay">拍摄倒计时</label><select id="settings-delay"><option value="0">立即拍摄</option><option value="3" selected>3 秒</option><option value="5">5 秒</option></select><p>与拍摄页的倒计时保持同步。</p></div>
           </section>
           <section class="preferences-card" aria-labelledby="service-settings-title">
-            <div class="preferences-card-heading"><div><h2 id="service-settings-title">服务状态</h2><p>查看设备和后端独立语音接口的配置情况。</p></div><button type="button" id="settings-refresh">刷新状态</button></div>
+            <div class="preferences-card-heading"><div><h2 id="service-settings-title">服务状态</h2><p>设备与当前选择的语音模型。</p></div><button type="button" id="settings-refresh">刷新状态</button></div>
             <dl class="preferences-status-list"><div><dt>摄像头 / 机械臂</dt><dd id="settings-device-status">正在获取状态…</dd></div><div><dt>后端模型模式</dt><dd id="settings-backend-mode">尚未获取</dd></div><div><dt>语音识别 ASR</dt><dd id="settings-asr-status">尚未获取</dd></div><div><dt>语音合成 TTS</dt><dd id="settings-tts-status">尚未获取</dd></div></dl>
-            <p class="preferences-caption">此处显示旧版独立 /asr、/tts 接口的服务端配置；拍摄页使用上方选择的浏览器语音或固定模型云端会话。配置齐全不代表已验证可用。</p>
+            <p class="preferences-caption">已选择不等于已连接；语音保存状态见上方。</p>
             <p id="settings-service-status" class="preferences-feedback" role="status"></p>
           </section>
         </div>

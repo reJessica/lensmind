@@ -65,7 +65,7 @@ function mostlyInArea(boxes, target) {
   return area > 0 && covered > area / 2 + 1e-10;
 }
 
-export function framingHint(analysis, framing, targets) {
+function framingHint(analysis, framing, targets) {
   if (framing !== 'half' && framing !== 'full') return '';
   const half = framing === 'half';
   const required = half ? '从头顶到腰胯' : '从头顶到双脚';
@@ -106,11 +106,12 @@ export function framingHint(analysis, framing, targets) {
   return '';
 }
 
-export function capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, framing, skipPosition, now = Date.now() } = {}) {
-  if (skipPosition && framing !== 'half' && framing !== 'full') return '';
+export function capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, framing, strictFraming = false, skipPosition, now = Date.now() } = {}) {
+  const checksFraming = strictFraming && ['half', 'full'].includes(framing);
+  if (skipPosition && !checksFraming) return '';
   if (analysis?.status === 'error') return '人物分析暂不可用，恢复后可拍摄。';
   if (!analysis?.timestamp || now - analysis.timestamp > MAX_FRAME_AGE) return '等待人物分析更新后可拍摄。';
-  const frameHint = framingHint(analysis, framing, targets);
+  const frameHint = checksFraming ? framingHint(analysis, framing, targets) : '';
   if (frameHint || skipPosition) return frameHint;
   const people = analysis.people ?? [];
   const visibleBodies = people.flatMap(tracked => tracked.person ? [tracked.person] : []);
@@ -153,11 +154,13 @@ function headPositionHint(face, target, prefix = '') {
   return inside ? '' : `请让${prefix}头部进入目标区域。`;
 }
 
-export function liveCompositionCue(analysis, composition, targets, { headTarget, bodyTarget, framing, skipPosition, now = Date.now() } = {}) {
+export function liveCompositionCue(analysis, composition, targets, { headTarget, bodyTarget, framing, strictFraming = false, skipPosition, now = Date.now() } = {}) {
   if (!analysis?.timestamp || now - analysis.timestamp > MAX_FRAME_AGE || analysis.status === 'error') return '';
-  if (skipPosition && framing !== 'half' && framing !== 'full') return '';
-  const frameHint = framingHint(analysis, framing, targets);
-  if (frameHint) return frameHint.startsWith('正在等待') ? '' : frameHint;
+  if (strictFraming) {
+    const frameHint = framingHint(analysis, framing, targets);
+    if (frameHint) return frameHint.startsWith('正在等待') ? '' : frameHint;
+  }
+  if (skipPosition) return '';
   const hint = capturePositionHint(analysis, composition, targets, { headTarget, bodyTarget, skipPosition, now });
   if (!hint) return '构图已到位，可以拍了。';
   const people = analysis.people ?? [];

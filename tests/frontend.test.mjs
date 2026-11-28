@@ -1,13 +1,15 @@
 // 可选开发检查：Node.js 20+，无第三方依赖，不参与页面运行。
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isSpokenShutter, parseCommand } from '../src/main/resources/static/js/commands.js';
+import { isSpokenShutter, parseCommand, spokenYawDirection } from '../src/main/resources/static/js/commands.js';
 import { cropRect, cropRegion, renderCrop, resizeCrop } from '../src/main/resources/static/js/crop.js';
 import { capturePositionHint, composeAdvice, createVisionTracker, cropVisionFrame, fitFrame } from '../src/main/resources/static/js/vision.js';
 import { encodeWav } from '../src/main/resources/static/js/ai-client.js';
 import { DEFAULT_PREFERENCES, normalizePreferences, readPreferences, savePreferences } from '../src/main/resources/static/js/settings.js';
-import { FIXED_MODELS, LLM_PROFILES } from '../src/main/resources/static/js/model-presets.js';
-import { createUtteranceBuffer, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
+import { FIXED_MODELS, LLM_PROFILES, SPEECH_PROFILES, LOCAL_ASR_MODEL, isCloudAsr, isCloudTts } from '../src/main/resources/static/js/model-presets.js';
+import { createUtteranceBuffer, createCloudSpeechInput, microphoneConstraints, resample16k } from '../src/main/resources/static/js/cloud-speech.js';
+import { createStreamingResultHandler, createLocalSpeechInput } from '../src/main/resources/static/js/local-speech.js';
+import { openWristCamera } from '../src/main/resources/static/js/wrist-camera.js';
 
 test('固定模型预设和旧配置迁移保留正确服务商，不接受未知语音模型', () => {
   assert.equal(LLM_PROFILES.recommended.model, 'qwen3.5-flash-2026-02-23');
@@ -16,12 +18,142 @@ test('固定模型预设和旧配置迁移保留正确服务商，不接受未�
   assert.equal(FIXED_MODELS.voice, 'longanhuan_v3.1');
   const old = normalizePreferences({ modelBaseUrl: 'https://zgc.apihy.com/v1', modelName: 'qwen3.5-27b' });
   assert.equal(old.llmProfile, 'existing');
-  assert.equal(old.asrModel, 'browser');
-  const pinned = normalizePreferences({ asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts, apiKey: 'fake-secret' });
-  assert.equal(pinned.asrModel, FIXED_MODELS.asr);
+  assert.equal(old.asrModel, LOCAL_ASR_MODEL);
+  const pinned = normalizePreferences({ voiceProvider: 'dashscope', speechDefaultsVersion: 3, asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts, apiKey: 'fake-secret' });
+  assert.equal(pinned.asrModel, LOCAL_ASR_MODEL);
   assert.equal(pinned.ttsModel, FIXED_MODELS.tts);
-  assert.equal(normalizePreferences({ asrModel: 'unknown', ttsModel: 'unknown' }).asrModel, 'browser');
+  assert.equal(normalizePreferences({ asrModel: 'unknown', ttsModel: 'unknown' }).asrModel, LOCAL_ASR_MODEL);
   assert.equal(JSON.stringify(pinned).includes('fake-secret'), false);
+});
+
+test('本地流式中间字只更新文本，最终句只执行一次，否定口令不拍照', () => {
+  const text = [], commands = [];
+  const deliver = createStreamingResultHandler(value => text.push(value), value => commands.push(parseCommand(value).type));
+  deliver([{ text: '拍', final: false, segment: 0 }, { text: '拍摄', final: false, segment: 0 }]);
+  assert.deepEqual(commands, []); assert.deepEqual(text, ['拍', '拍摄']);
+  deliver([{ text: '拍摄', final: true, segment: 0 }, { text: '拍摄', final: true, segment: 0 }]);
+  deliver([{ text: '不要拍照', final: true, segment: 1 }]);
+  deliver([{ text: '拍摄', final: 'true', segment: 2 }]);
+  assert.deepEqual(commands, ['CAPTURE', 'CLARIFY']);
+});
+
+test('所有历史 ASR 偏好固定本地，TTS 保持原选择', () => {
+  const old = normalizePreferences({ ...DEFAULT_PREFERENCES, speechDefaultsVersion: 4, asrModel: 'whisper-1' });
+  assert.equal(old.asrModel, LOCAL_ASR_MODEL);
+  assert.equal(old.ttsModel, DEFAULT_PREFERENCES.ttsModel);
+  const manual = normalizePreferences({ ...DEFAULT_PREFERENCES, asrModel: 'whisper-1' });
+  assert.equal(manual.asrModel, LOCAL_ASR_MODEL);
+  for (const version of [2, 3, 4, 5]) for (const model of ['browser', 'whisper-1', FIXED_MODELS.asr, 'unknown']) {
+    assert.equal(normalizePreferences({ ...DEFAULT_PREFERENCES, speechDefaultsVersion: version, asrModel: model }).asrModel, LOCAL_ASR_MODEL);
+  }
+});
+
+test('停止本地识别时未完成的连接返回后立即关闭，不开启录音或执行指令', async () => {
+  const saved = new Map(['window', 'navigator'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  let resolve, closed;
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { AudioContext: class {}, AudioWorkletNode: class {} } });
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { mediaDevices: { getUserMedia: assert.fail } } });
+  try {
+    const local = createLocalSpeechInput({ onState() {}, onText: assert.fail, onCommand: assert.fail,
+      client: { create: () => new Promise(done => { resolve = done; }), close: async id => { closed = id; } } });
+    local.toggleHandsFree(); local.stop(); resolve({ id: 'late-session' });
+    await new Promise(done => setImmediate(done));
+    assert.equal(local.handsFree, false); assert.equal(closed, 'late-session');
+  } finally {
+    for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+  }
+});
+
+test('本地音频逐块回显，播报重置旧句并丢弃晚到的快门结果', async () => {
+  const saved = new Map(['window', 'navigator', 'document', 'AudioWorkletNode'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  let node, calls = 0, reset = 0, resolve, closed = 0;
+  const drafts = [], commands = [];
+  class Context {
+    sampleRate = 16000; audioWorklet = { addModule: async () => {} };
+    resume() { return Promise.resolve(); } close() { return Promise.resolve(); }
+    createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+  }
+  class Worklet { port = {}; constructor() { node = this; } connect() {} disconnect() {} }
+  const globals = { window: { AudioContext: Context, AudioWorkletNode: Worklet }, document: { hidden: false }, AudioWorkletNode: Worklet,
+    navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop() {}, addEventListener() {} }] }) } } };
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  let local;
+  try {
+    local = createLocalSpeechInput({ onState() {}, onText: text => drafts.push(text), onCommand: text => commands.push(text), client: {
+      create: async () => ({ id: 'local-id' }), close: async () => { closed++; }, reset: async () => { reset++; },
+      audio: async () => {
+        calls++;
+        if (calls === 3) return new Promise(done => { resolve = done; });
+        return { mode: 'LOCAL', results: [{ text: '拍摄', final: calls !== 1, segment: calls >= 4 ? 2 : 0 }] };
+      },
+    } });
+    local.toggleHandsFree(); await new Promise(done => setImmediate(done));
+    const frame = () => node.port.onmessage({ data: new Float32Array(1600).buffer });
+    frame(); await new Promise(done => setImmediate(done));
+    assert.deepEqual(drafts, ['拍摄']); assert.deepEqual(commands, []);
+    frame(); await new Promise(done => setImmediate(done)); assert.deepEqual(commands, ['拍摄']);
+    frame(); local.playback(true);
+    resolve({ mode: 'LOCAL', results: [{ text: '拍摄', final: true, segment: 1 }] });
+    await new Promise(done => setImmediate(done));
+    assert.equal(reset, 1); assert.deepEqual(commands, ['拍摄']);
+    local.playback(false); frame(); await new Promise(done => setImmediate(done));
+    assert.deepEqual(commands, ['拍摄', '拍摄']);
+    local.stop(); assert.equal(closed, 1);
+  } finally {
+    local?.stop();
+    for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+  }
+});
+
+test('首次加载、旧浏览器默认值和恢复默认使用云端，后续手选浏览器会保留', () => {
+  assert.equal(DEFAULT_PREFERENCES.asrModel, LOCAL_ASR_MODEL);
+  assert.equal(DEFAULT_PREFERENCES.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  assert.deepEqual(readPreferences({ getItem() { return null; } }), DEFAULT_PREFERENCES);
+  const old = { asrModel: 'browser', ttsModel: 'browser', grid: false, cloudWorkspace: 'workspace-123' };
+  const migrated = readPreferences({ getItem() { return JSON.stringify(old); } });
+  assert.equal(migrated.asrModel, LOCAL_ASR_MODEL);
+  assert.equal(migrated.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  assert.equal(migrated.grid, false);
+  assert.equal(migrated.cloudWorkspace, 'workspace-123');
+  assert.equal(migrated.speechDefaultsVersion, 5);
+  let saved;
+  const storage = { setItem(key, value) { saved = value; }, getItem() { return saved; } };
+  savePreferences(storage, { ...migrated, asrModel: 'browser', ttsModel: 'browser' });
+  assert.equal(readPreferences(storage).asrModel, LOCAL_ASR_MODEL);
+  assert.equal(readPreferences(storage).ttsModel, 'browser');
+  savePreferences(storage, { ...DEFAULT_PREFERENCES });
+  assert.equal(readPreferences(storage).asrModel, LOCAL_ASR_MODEL);
+  assert.equal(readPreferences(storage).ttsModel, SPEECH_PROFILES.uniapi.tts);
+});
+
+test('语音默认迁移至 UniAPI，百炼仅在新版手选时保留，两套云端模型都走后端', () => {
+  const old = normalizePreferences({ speechDefaultsVersion: 2, asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts });
+  assert.equal(old.voiceProvider, 'uniapi');
+  assert.equal(old.asrModel, LOCAL_ASR_MODEL); assert.equal(old.ttsModel, SPEECH_PROFILES.uniapi.tts);
+  const selected = normalizePreferences({ ...DEFAULT_PREFERENCES, voiceProvider: 'dashscope', asrModel: FIXED_MODELS.asr, ttsModel: FIXED_MODELS.tts });
+  assert.equal(selected.voiceProvider, 'dashscope'); assert.equal(selected.asrModel, LOCAL_ASR_MODEL);
+  for (const profile of Object.values(SPEECH_PROFILES)) { assert.equal(isCloudAsr(profile.asr), true); assert.equal(isCloudTts(profile.tts), true); }
+  assert.equal(isCloudAsr('browser'), false); assert.equal(isCloudTts('unknown'), false);
+});
+
+test('LLM 默认汇云，迁移旧版百炼默认配置，保留后续手选和其他服务商', () => {
+  assert.equal(DEFAULT_PREFERENCES.modelBaseUrl, 'https://zgc.apihy.com/v1');
+  assert.equal(DEFAULT_PREFERENCES.modelName, 'qwen3.5-27b');
+  assert.equal(DEFAULT_PREFERENCES.llmProfile, 'existing');
+  const old = { modelBaseUrl: LLM_PROFILES.recommended.url, modelName: FIXED_MODELS.llm, llmProfile: 'recommended' };
+  assert.equal(normalizePreferences(old).modelBaseUrl, DEFAULT_PREFERENCES.modelBaseUrl);
+  assert.equal(normalizePreferences({ ...old, modelDefaultsVersion: 2 }).modelName, FIXED_MODELS.llm);
+  assert.equal(normalizePreferences({ ...old, llmProfile: 'custom' }).modelName, FIXED_MODELS.llm);
+  assert.equal(normalizePreferences({ modelBaseUrl: LLM_PROFILES.campus.url, modelName: 'qwen' }).llmProfile, 'campus');
+});
+
+test('Gemini TTS 迁移旧默认且保留新版手选备用模型和浏览器', () => {
+  assert.equal(DEFAULT_PREFERENCES.ttsModel, 'gemini-3.8-flash-lite-tts');
+  assert.equal(normalizePreferences({ voiceProvider: 'uniapi', speechDefaultsVersion: 3, ttsModel: 'tts-1' }).ttsModel, 'gemini-3.8-flash-lite-tts');
+  assert.equal(normalizePreferences({ voiceProvider: 'uniapi', speechDefaultsVersion: 4, ttsModel: 'tts-1' }).ttsModel, 'tts-1');
+  assert.equal(normalizePreferences({ speechDefaultsVersion: 4, ttsModel: 'browser' }).ttsModel, 'browser');
+  assert.equal(isCloudTts('gemini-3.8-flash-lite-tts'), true);
+  assert.equal(isCloudTts('tts-1'), true);
 });
 
 test('云端录音先检测短句，静音和短噪声不上传，长句限制在十秒左右', () => {
@@ -49,6 +181,86 @@ test('麦克风 PCM 在编码 WAV 前重采样到 16kHz', () => {
   assert.throws(() => resample16k(new Float32Array(8000), 8000));
 });
 
+test('轻声短口令可以进入 ASR，低电平底噪和瞬时声音不上传', () => {
+  const buffer = createUtteranceBuffer(16000);
+  const frame = value => new Float32Array(320).fill(value);
+  for (let i = 0; i < 100; i++) assert.equal(buffer.push(frame(.001)), null);
+  for (let i = 0; i < 8; i++) assert.equal(buffer.push(frame(.006)), null);
+  assert.ok(buffer.level > .004);
+  let utterance;
+  for (let i = 0; i < 40; i++) utterance ||= buffer.push(frame(0));
+  assert.ok(utterance instanceof Float32Array);
+  assert.equal(buffer.level, 0);
+  buffer.reset(); buffer.push(frame(.1));
+  for (let i = 0; i < 40; i++) assert.equal(buffer.push(frame(0)), null);
+});
+
+test('云端麦克风短句经 WAV 转写后回填文本，并识别为快门口令', async () => {
+  const saved = new Map(['window', 'document', 'navigator', 'AudioWorkletNode'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const states = [], drafts = [], commands = [];
+  let node, stopped = false, uploaded, temporarilyBusy = false;
+  class Context {
+    sampleRate = 16000;
+    audioWorklet = { addModule: async () => {} };
+    resume() { return Promise.resolve(); }
+    close() { return Promise.resolve(); }
+    createMediaStreamSource() { return { connect() {}, disconnect() {} }; }
+  }
+  class Worklet {
+    port = {};
+    constructor() { node = this; }
+    connect() {}
+    disconnect() {}
+  }
+  const globals = { window: { AudioContext: Context, AudioWorkletNode: Worklet }, document: { hidden: false }, AudioWorkletNode: Worklet,
+    navigator: { mediaDevices: { getUserMedia: async options => {
+      assert.deepEqual(options.audio.deviceId, { exact: 'physical-mic' });
+      assert.equal(options.audio.noiseSuppression, false);
+      return { getTracks: () => [{ label: '实体测试麦克风', stop() { stopped = true; }, addEventListener() {} }] };
+    } } } };
+  for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { configurable: true, value });
+  let speech;
+  try {
+    speech = createCloudSpeechInput({ cloud: { require: () => 'test-session', transcribe: async wav => {
+      if (temporarilyBusy) throw Object.assign(new Error('语音识别 ASR：供应商上游满载'), { status: 503 });
+      uploaded = wav; return '請拍照';
+    } },
+      audioOptions: () => ({ deviceId: 'physical-mic', processing: false }),
+      onState: state => states.push(state), onText: text => drafts.push(text), onCommand: text => commands.push(parseCommand(text).type) });
+    speech.toggleHandsFree();
+    await new Promise(done => setImmediate(done));
+    const frame = value => ({ data: new Float32Array(320).fill(value).buffer });
+    for (let i = 0; i < 8; i++) await node.port.onmessage(frame(.006));
+    for (let i = 0; i < 40; i++) await node.port.onmessage(frame(0));
+    assert.equal(uploaded.type, 'audio/wav');
+    assert.deepEqual(drafts, ['請拍照']); assert.deepEqual(commands, ['CAPTURE']);
+    assert.ok(states.some(state => state.message === '正在识别云端语音…'));
+    assert.equal(speech.handsFree, true);
+    assert.equal(states.at(-1).listening, true);
+    assert.equal(states.at(-1).deviceLabel, '实体测试麦克风');
+    temporarilyBusy = true;
+    for (let i = 0; i < 8; i++) await node.port.onmessage(frame(.006));
+    for (let i = 0; i < 40; i++) await node.port.onmessage(frame(0));
+    assert.equal(speech.handsFree, true, '短暂上游满载不关闭麦克风');
+    assert.match(states.at(-1).message, /本句未重试/);
+    assert.equal(stopped, false);
+    assert.deepEqual(commands, ['CAPTURE'], '失败句不触发拍照');
+  } finally {
+    speech?.stop();
+    for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key]; }
+  }
+  assert.equal(stopped, true);
+});
+
+test('麦克风默认使用原始音频，显式选择设备不会静默退回默认输入', () => {
+  assert.deepEqual(microphoneConstraints(), { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+  const chosen = microphoneConstraints({ deviceId: 'device-123', processing: true });
+  assert.deepEqual(chosen.audio.deviceId, { exact: 'device-123' });
+  assert.equal(chosen.audio.echoCancellation, true);
+  const prefs = normalizePreferences({ microphoneDeviceId: 'device-123', microphoneProcessing: true });
+  assert.equal(prefs.microphoneDeviceId, 'device-123'); assert.equal(prefs.microphoneProcessing, true);
+});
+
 test('设置只持久化普通偏好，不保存密钥、会话或带凭据的地址', () => {
   let saved;
   const storage = { setItem(key, value) { saved = value; }, getItem() { return saved; } };
@@ -70,6 +282,30 @@ test('损坏或不可访问的设置存储不阻止启动，参数使用有效�
   assert.deepEqual(value, { ...DEFAULT_PREFERENCES, voiceEnabled: false, voiceVolume: 0 });
   assert.equal(normalizePreferences({ voiceVolume: NaN }).voiceVolume, 1);
   assert.equal(normalizePreferences({ modelBaseUrl: 'https://api.uniapi.io/v1/' }).modelBaseUrl, 'https://api.uniapi.io/v1');
+});
+
+test('实机语音只识别直接的单步转向口令', () => {
+  assert.equal(spokenYawDirection('相机向左转一点。'), 'LEFT');
+  assert.equal(spokenYawDirection('请镜头往右微转一下！'), 'RIGHT');
+  for (const phrase of ['不要向左转', '如果相机向左转一点', '相机向左转一点然后向右转', '相机向右转一点？', '相机往前']) {
+    assert.equal(spokenYawDirection(phrase), null);
+  }
+});
+
+test('腕部取景使用指定 USB 设备，缺失时不改用内置摄像头', async () => {
+  const streams = [];
+  const cameras = [
+    { kind: 'videoinput', deviceId: 'integrated', label: 'Integrated Webcam' },
+    { kind: 'videoinput', deviceId: 'wrist', label: 'USB CAMERA (10bb:2b08)' },
+  ];
+  const devices = {
+    enumerateDevices: async () => cameras,
+    getUserMedia: async options => { streams.push(options); return 'wrist-stream'; },
+  };
+  assert.equal(await openWristCamera(devices, 'USB CAMERA'), 'wrist-stream');
+  assert.deepEqual(streams[0].video.deviceId, { exact: 'wrist' });
+  await assert.rejects(openWristCamera(devices, 'Missing camera'), /找不到腕部摄像头/);
+  assert.equal(streams.length, 1);
 });
 
 test('描述要拍的照片时，明确的画幅和四格区域从文字或语音转写直接设置', () => {
@@ -500,7 +736,7 @@ test('live speech guides the subject in the current frame and uses the same read
   assert.deepEqual(parseCommand('我已完成，继续。'), { type: 'GUIDE_DONE' });
 });
 
-test('half and full shots require actual pose in the crop even when a tracked head is on target', () => {
+test('工作台启用严格景别，通用构图判断仍支持景别参考模式', () => {
   const now = 7300;
   const box = { x: .32, y: .08, width: .36, height: .92 };
   const face = { x: .46, y: .12, width: .08, height: .08 };
@@ -514,14 +750,23 @@ test('half and full shots require actual pose in the crop even when a tracked he
     { x: 0, y: 0, width: 1, height: 1 });
   const goals = new Map();
   const options = { headTarget: { cells: [1], part: 'head' }, framing: 'half', now };
-  assert.match(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, options), /腰胯/);
-  assert.match(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, options), /腰胯/);
-  assert.match(capturePositionHint(frame({ ...halfPose, nose: point(.5, .73) }), 'center', goals, options), /腰胯/);
+  assert.equal(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, options), '');
+  assert.equal(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, options), '构图已到位，可以拍了。');
+  assert.equal(capturePositionHint(frame({ ...halfPose, nose: point(.5, .73) }), 'center', goals, options), '');
   assert.equal(capturePositionHint(frame(halfPose), 'center', goals, options), '');
-  assert.match(capturePositionHint(frame(fullPose), 'center', goals, options), /下边缘/);
-  assert.match(capturePositionHint(frame(halfPose), 'center', goals, { ...options, framing: 'full', skipPosition: true }), /双脚/);
+  assert.equal(capturePositionHint(frame(fullPose), 'center', goals, options), '');
+  assert.equal(capturePositionHint(frame(halfPose), 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
   assert.equal(capturePositionHint(frame(fullPose), 'center', goals, { ...options, framing: 'full' }), '');
   assert.equal(capturePositionHint(frame({}), 'center', goals, { ...options, framing: 'any' }), '');
+  const strict = { ...options, strictFraming: true };
+  assert.match(capturePositionHint(frame({ nose: halfPose.nose }), 'center', goals, strict), /腰胯/);
+  assert.match(liveCompositionCue(frame({ nose: halfPose.nose }), 'center', goals, strict), /腰胯/);
+  assert.equal(capturePositionHint(frame(halfPose), 'center', goals, strict), '');
+  assert.match(capturePositionHint(frame(fullPose), 'center', goals, strict), /下边缘/);
+  assert.match(capturePositionHint(frame(halfPose), 'center', goals, { ...strict, framing: 'full', skipPosition: true }), /双脚/);
+  assert.equal(capturePositionHint(frame(fullPose), 'center', goals, { ...strict, framing: 'full' }), '');
+  assert.equal(capturePositionHint(frame({}), 'center', goals, { ...strict, framing: 'any' }), '');
+  assert.equal(capturePositionHint({ status: 'error' }, 'center', goals, { ...options, framing: 'full', skipPosition: true }), '');
 });
 
 test('voice feedback waits for a consistent cue, deduplicates it and cancels when stopped', () => {
@@ -582,17 +827,104 @@ test('取消云端合成后丢弃晚到的音频，不转为浏览器播报', as
   assert.equal(signal.aborted, true);
   resolve(new Blob(['not-played']));
   await Promise.resolve(); await Promise.resolve();
-  assert.deepEqual(playback, [true, false]);
+  assert.deepEqual(playback, [], '等待 TTS 合成和取消未播放音频均不应暂停 ASR');
 });
 
 test('云端合成失败明确报错，不伪造音频或自动切换模型', async () => {
-  const errors = [], playback = [];
+  const errors = [], playback = [], status = [];
   const voice = createVoiceGuide({ useCloud: () => true, synthesize: async () => { throw Error('语音配置已过期'); },
+    onStatus: (phase, message) => status.push([phase, message]),
     onError: error => errors.push(error.message), onPlayback: value => playback.push(value) });
   voice.setEnabled(true); voice.speak('测试');
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(errors, ['语音配置已过期']);
-  assert.deepEqual(playback, [true, false]);
+  assert.deepEqual(playback, [], 'TTS 失败不能中断 ASR 收听');
+  assert.deepEqual(status, [['loading', undefined], ['error', '语音配置已过期']]);
+  assert.equal(voice.busy, false);
+});
+
+test('等待合成时立即报告状态，取消后不播放晚到音频', async () => {
+  const status = [];
+  let resolve;
+  const voice = createVoiceGuide({ useCloud: () => true,
+    synthesize: () => new Promise(done => { resolve = done; }), onError: assert.fail,
+    onStatus: phase => status.push(phase) });
+  voice.setEnabled(true); voice.speak('试听');
+  assert.equal(voice.busy, true);
+  assert.deepEqual(status, ['loading']);
+  await Promise.resolve();
+  voice.cancel(); resolve(new Blob(['ignored']));
+  await new Promise(done => setImmediate(done));
+  assert.equal(voice.busy, false);
+  assert.deepEqual(status, ['loading', 'cancelled']);
+});
+
+test('主动停止试听显示简短提示，内部重置不冒充用户取消', async () => {
+  const status = [];
+  const voice = createVoiceGuide({ useCloud: () => true,
+    synthesize: () => new Promise(() => {}), onError: assert.fail,
+    onStatus: (phase, message) => status.push([phase, message]) });
+  voice.setEnabled(true); voice.speak('试听');
+  await Promise.resolve();
+  voice.cancel('试听已停止。');
+  assert.deepEqual(status.at(-1), ['cancelled', '试听已停止。']);
+  voice.speak('再试听');
+  await Promise.resolve();
+  voice.reset();
+  assert.deepEqual(status.at(-1), ['cancelled', '']);
+  assert.equal(voice.busy, false);
+});
+
+test('Whisper 繁体快门口令可以直接拍照，否定口令和停止保持正确优先级', () => {
+  for (const text of ['請拍照', '請拍攝。', '幫我拍一張照片']) {
+    assert.equal(isSpokenShutter(text), true);
+    assert.equal(parseCommand(text).type, 'CAPTURE');
+  }
+  assert.equal(parseCommand('請勿拍攝').type, 'CLARIFY');
+  assert.equal(parseCommand('別拍照').type, 'CLARIFY');
+  assert.equal(isSpokenShutter('別拍照'), false);
+  assert.equal(parseCommand('別動').type, 'STOP');
+});
+
+test('音量为零给出提示，避免消耗云端调用后静音', () => {
+  const status = [];
+  const voice = createVoiceGuide({ useCloud: () => true, synthesize: assert.fail, onError: assert.fail,
+    onStatus: (phase, message) => status.push([phase, message]) });
+  voice.setEnabled(true); voice.configure({ volume: 0 });
+  assert.equal(voice.speak('试听'), false);
+  assert.equal(status[0][0], 'error');
+  assert.match(status[0][1], /音量为 0/);
+  assert.equal(voice.busy, false);
+});
+
+test('真实播放开始和结束才报告相应状态，浏览器阻止播放时保留原因', async () => {
+  const original = globalThis.Audio, status = [], errors = [];
+  let audio, rejectPlayback = false;
+  globalThis.Audio = class {
+    constructor() { audio = this; }
+    pause() {}
+    play() { return rejectPlayback ? Promise.reject(new DOMException('blocked', 'NotAllowedError')) : Promise.resolve(); }
+  };
+  const voice = createVoiceGuide({ useCloud: () => true, synthesize: async () => new Blob(['test']),
+    onError: error => errors.push(error.message), onStatus: (phase, message) => status.push([phase, message]) });
+  try {
+    voice.setEnabled(true); voice.speak('试听');
+    await new Promise(done => setImmediate(done));
+    assert.deepEqual(status.map(item => item[0]), ['loading', 'playing']);
+    audio.onended();
+    assert.equal(voice.busy, false);
+    assert.equal(status.at(-1)[0], 'ended');
+    rejectPlayback = true; voice.speak('再次试听');
+    await new Promise(done => setImmediate(done));
+    assert.equal(status.at(-1)[0], 'error');
+    assert.match(status.at(-1)[1], /浏览器阻止/);
+    assert.match(errors[0], /允许本站播放声音/);
+    assert.equal(voice.busy, false);
+  } finally {
+    voice.cancel();
+    if (original === undefined) delete globalThis.Audio;
+    else globalThis.Audio = original;
+  }
 });
 
 test('三维机位支持前后、上下和俯仰，混合方向指令需要先明确一步', () => {

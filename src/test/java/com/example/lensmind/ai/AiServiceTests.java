@@ -169,6 +169,8 @@ class AiServiceTests {
         httpStatus = 401;
         assertThrows(AiException.class, () -> ai.command(new CommandRequest("人物放大一些", null, null)));
         AiException e = assertThrows(AiException.class, () -> ai.command(new CommandRequest("人物放大一些", null, null)));
+        assertTrue(e.getMessage().contains("1/1"));
+        assertTrue(e.getMessage().contains("LENSMIND_MAX_LIVE_CALLS"));
         assertEquals("LIVE_CALL_LIMIT", e.code()); assertEquals(1, hits.get()); assertEquals(1, budget.used());
     }
     @Test void overloadedProviderIsDistinguishedWithoutLeakingRawError() throws Exception {

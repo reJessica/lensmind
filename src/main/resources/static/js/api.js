@@ -13,6 +13,7 @@ async function request(path, body) {
     const response = await fetch(`/api/device/${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       cache: 'no-store',
+      keepalive: path === 'stop',
       headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
@@ -33,7 +34,15 @@ async function request(path, body) {
 
 export const deviceApi = {
   status: () => request('status'),
-  move: (direction, step = 1) => request('move', { direction, step }),
+  move: (direction, step = 1, source) => request('move', { direction, step, source }),
+  arm: () => request('arm', {}),
+  release: () => request('release', { supported: true }),
   home: () => request('home', {}),
   stop: () => request('stop', {}),
+};
+
+export const calibrationApi = {
+  status: () => request('calibration'),
+  start: () => request('calibration/start', {}),
+  verify: () => request('calibration/verify', {}),
 };

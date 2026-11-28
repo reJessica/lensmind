@@ -4,7 +4,15 @@
 
 2026-11-25 补充（ya.liu，AI 辅助：Codex）：工作台设置页已加入固定 LLM/ASR/TTS 预设及独立语音会话，接入与验证边界见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。下文继续说明旧版独立接口及历史实测，不代表新固定方案已通过云端鉴权。
 
+2026-11-26 复测（ya.liu，AI 辅助：Codex）：当前默认方案为汇云 `qwen3.5-27b` + UniAPI `whisper-1` / `tts-1/alloy`，无需百炼账号。使用已有本机 UniAPI Key，通过新 `/api/ai/speech/tts` 对「请看向镜头，放松肩膀。」真实调用一次（语速 1.0）；约 49.2 秒后后端返回 HTTP 503，明确提示供应商上游负载已饱和。未获得音频，实际试听仍未完成；未重试、换模型或回退浏览器，未调用 ASR，测试语音会话已清除。需供应商恢复或调整当前分组通道后再手动试听。
+
 ## 现在交付了什么
+
+2026-11-28 最新更新（ya.liu，AI 辅助：Codex）：默认 ASR 已改为本地 Zipformer 中文流式模型，权重通过 Git LFS 随 `ya.liu` 分支分发；只需要本机服务，不使用 ASR API Key。实时中间文字不执行动作，最终句去重后进入原有指令解析。跨平台启动和验证见 [LOCAL_ASR.md](LOCAL_ASR.md)，接口见 [LOCAL_ASR_API.md](LOCAL_ASR_API.md)。下方云端 Whisper/Gemini 历史验证保留，云端选项仍可手选。
+
+2026-11-28 最新可用语音搭配（ya.liu，AI 辅助：Codex）：Whisper + Gemini `gemini-3.8-flash-lite-tts/Kore` 经 UniAPI 原生接口与项目后端真实合成/回听均成功。设置页已改默认并迁移旧 tts-1 偏好；音频位于 Git 忽略的 `docs/model-tts-preview.local.wav`。历史失败记录保留，最新步骤与验证见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。
+
+2026-11-28 补充（ya.liu，AI 辅助：Codex）：新会话 Whisper 独立实测成功，系统语音测试输入「请拍照」转写为「請拍照」（LIVE，2.56 秒）。前端已修复繁体快门识别，等待 TTS 合成不再暂停 ASR，仅实际播放音频时暂停。UniAPI `tts-1` 与用户指定的 Gemini `gemini-2.5-flash-preview-tts`（原生接口、Kore）各一次仍为上游满载，无云端音频；未重试或自动切模型。真实麦克风及拍照流程需在浏览器授权后联调，不能把本机系统测试录音当成云端生成成果。
 
 - Spring Boot 后端：文字指令解析、单帧构图分析/人物指导、ASR 与 TTS 适配接口、模式和用量状态。
 - 提示词：`src/main/resources/prompts/command-v1.txt`、`vision-v1.txt`，版本 `lensmind-v1`，可独立调试。
@@ -124,7 +132,7 @@ python3 scripts/smoke_ai.py --base-url http://127.0.0.1:8080 --live --speech-onl
 
 `--speech` 在完整测试后增加 TTS 与 ASR，`--speech-only` 则跳过文字/图片模型。TTS 失败时不会继续调用 ASR，也不自动重试。脚本会写被 Git 忽略的 `docs/model-test-results.local.json`；成功的真实 TTS 预览保存到同样被忽略的 `docs/model-tts-preview.local.wav`，不记录密钥。
 
-默认每进程最多尝试 8 次真实调用、并发 2、超时 60 秒，不自动重试；进程重启会重置计数，不等于人民币预算。修改模型/提示词后先用少量固定样例评估，再扩大测试。
+默认每进程最多尝试 50 次真实调用、并发 2、超时 60 秒，不自动重试；进程重启会重置计数，不等于人民币预算。LLM 回答与云端 TTS 各计一次，本地 ASR 不计数。可用环境变量 `LENSMIND_MAX_LIVE_CALLS` 或本机 `lensmind.ai.max-live-calls` 调整上限，修改后重启生效。修改模型/提示词后先用少量固定样例评估，再扩大测试。
 
 测试图片及许可见 [samples/ATTRIBUTION.md](samples/ATTRIBUTION.md)。它仅验证单张头肩照的分析接口，后续还需要全身、无人物、遮挡、多人、低光等测试样例，以及连续帧稳定性模块。
 

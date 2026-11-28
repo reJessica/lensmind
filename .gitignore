@@ -40,7 +40,12 @@ build/
 *.log
 photos/
 node_modules/
+.venv-asr/
+__pycache__/
 /models/*
+!/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/
+/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/*.part
+/models/sherpa-onnx-streaming-zipformer-zh-int8-2025-06-30/download.tar.bz2
 !/models/ssd_mobilenet_v1_12.onnx
 !/models/face_detection_yunet_2026may.onnx
 !/models/pose_estimation_mediapipe_2023mar.onnx
@@ -50,3 +55,4 @@ node_modules/
 /config/ai-local.properties
 /docs/model-test-results.local.json
 /docs/model-tts-preview.local.wav
+config/so101-calibration.local.json

@@ -216,6 +216,7 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 .site-actions { justify-self: end; }
 #help-button { padding: 7px 11px; border-color: #dedfd3; background: transparent; color: #475545; font-size: 12px; }
 #help-button:hover { background: #eeeee4; }
+#so101-cancel { padding: 7px 9px; font-size: 12px; }
 .site-actions .stop-button { min-width: 61px; white-space: nowrap; }
 .stop-button { white-space: nowrap; }
 .stop-button:is([data-stop="stopping"], [data-stop="resetting"]) { color: #735119; border-color: #e7d5a9; background: #fff3d8; cursor: progress; }
@@ -284,6 +285,14 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 .assistant-reply #ai-summary { font-weight: 650; }
 #studio .settings-content { display: block; }
 .shutter-controls { padding: 14px 0 9px; border-bottom: 1px solid #eef1ea; }
+.calibration-task { grid-column: 1 / -1; min-width: 0; font-size: 13px; line-height: 1.55; }
+.calibration-task h3 { font-size: 14px; }
+.calibration-task p { margin: 0 0 8px; }
+#neutral-position { margin: 10px 0 0; padding: 10px; border-radius: 6px; background: #f4f6ef; }
+.calibration-task ol { padding-left: 20px; }
+.calibration-task li + li { margin-top: 6px; }
+.calibration-task pre { margin: 8px 0; padding: 8px; border-radius: 6px; background: #f4f6ef; white-space: pre-wrap; overflow-wrap: anywhere; }
+.calibration-task button { padding: 6px 9px; border-radius: 6px; }
 .shutter-controls .capture-settings { margin: 0 0 10px; padding: 0; }
 .shutter-controls .capture-button { justify-content: center; gap: 9px; text-align: center; }
 .shot-count { margin: 8px 0 2px; color: #506356; font-size: 12px; text-align: center; }
