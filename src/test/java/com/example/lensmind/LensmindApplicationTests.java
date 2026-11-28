@@ -25,7 +25,8 @@ class LensmindApplicationTests {
     @Test
     void staleBuildTimestampCannotHideUpdatedControlAssets() throws Exception {
         var client = HttpClient.newHttpClient();
-        for (String path : List.of("/", "/js/app.js", "/js/commands.js", "/css/style.css")) {
+        for (String path : List.of("/", "/js/app.js", "/js/commands.js", "/css/style.css", "/js/settings.js", "/css/settings.css",
+                "/js/model-presets.js", "/js/cloud-speech.js", "/js/pcm-worklet.js")) {
             var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
                     .header("If-Modified-Since", "Fri, 01 Feb 1980 00:00:00 GMT")
                     .build();

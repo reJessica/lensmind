@@ -30,6 +30,39 @@ class AiTests {
         assertThrows(AiException.class, () -> client.connection("https://models.sjtu.edu.cn.example.com/api/v1", "qwen", "fake-test-only"));
     }
 
+    @Test void fixedDashscopeSnapshotDisablesThinkingWithoutChangingOtherProviders() {
+        var client = new AiModelClient(mapper, "dashscope.aliyuncs.com,zgc.apihy.com");
+        var pinned = client.connection("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.5-flash-2026-02-23", "fake-test-only");
+        var payload = client.payload(pinned, "test", "hello", null, null, 100);
+        assertEquals("qwen3.5-flash-2026-02-23", payload.get("model"));
+        assertEquals(false, payload.get("enable_thinking"));
+        var existing = client.connection("https://zgc.apihy.com/v1", "qwen3.5-27b", "fake-test-only");
+        assertFalse(client.payload(existing, "test", "hello", null, null, 100).containsKey("enable_thinking"));
+    }
+
+    @Test void photographyConnectionTestsRespectTheSharedLiveCallBudget() {
+        var properties = new AiProperties(AiProperties.Mode.MOCK, 0, 3, null, null, null, "", "", "", false, false);
+        var client = new AiModelClient(mapper, "dashscope.aliyuncs.com", new LiveCallBudget(properties));
+        var connection = client.connection("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.5-flash-2026-02-23", "fake-test-only");
+        assertEquals(429, assertThrows(AiException.class, () -> client.check(connection)).status().value());
+    }
+
+    @Test
+    void defaultConfigurationAcceptsTeamProvidersWithoutAllowingSimilarDomains() throws Exception {
+        var properties = PropertiesLoaderUtils.loadAllProperties("application.properties");
+        String hosts = new MockEnvironment().resolveRequiredPlaceholders(properties.getProperty("lensmind.ai.allowed-hosts"));
+        var client = new AiModelClient(mapper, hosts);
+        for (String host : List.of("zgc.apihy.com", "api.uniapi.io")) {
+            var connection = client.connection("https://" + host + "/v1", "qwen3.5-27b", "fake-test-only");
+            assertEquals("https://" + host + "/v1/chat/completions", connection.endpoint.toString());
+            assertThrows(AiException.class, () -> client.connection("https://" + host + ".example.com/v1", "qwen3.5-27b", "fake-test-only"));
+        }
+        String overridden = new MockEnvironment().withProperty("LENSMIND_AI_ALLOWED_HOSTS", "api.openai.com")
+                .resolveRequiredPlaceholders(properties.getProperty("lensmind.ai.allowed-hosts"));
+        var restricted = new AiModelClient(mapper, overridden);
+        assertThrows(AiException.class, () -> restricted.connection("https://zgc.apihy.com/v1", "qwen3.5-27b", "fake-test-only"));
+    }
+
     @Test
     void connectionChecksImagesAndAnalysisSendsBothInOrder() throws Exception {
         String scene = jpeg(72);

@@ -10,6 +10,27 @@
 | POST | `/api/device/move` | `{"direction":"LEFT","step":1}` | 二维上下左右微调，三维转向、平移、升降和俯仰 |
 | POST | `/api/device/home` | `{}` | 模拟回初始位，同时解除停止锁定 |
 | POST | `/api/device/stop` | `{}` | 独立停止入口，后续 move 返回 409 |
+| GET | `/api/device/calibration` | 无 | 查询拍摄前校准要求和就绪状态 |
+| POST | `/api/device/calibration/start` | `{}` | 记录旧文件状态，开启手动校准任务 |
+| POST | `/api/device/calibration/verify` | `{}` | 核验本次新生成的六轴文件 |
+
+校准接口返回 `required`、`ready`、`phase`、`message` 和供本机操作的 `command`。默认 `DISABLED`，开启后进入 `REQUIRED`、`PENDING`、`VERIFIED`，缺少配置时为 `UNCONFIGURED`。新增的 `revision` 是已核验文件的标记，其余状态下为空。页面用它关联当前页面的中立位确认，并在快门和倒计时结束时复查。启用选项见 README。所有校准接口均只处理任务状态和文件。串口由操作员运行的独立脚本访问。
+
+`wristCamera` 提供腕部 USB 摄像头的配置名称，空字符串沿用普通取景。配置后，浏览器仅使用指定设备的媒体流供预览、分析与拍照。
+
+当 `LENSMIND_DEVICE_BACKEND=so101` 时，状态返回 `mode: "SO101"`，状态值为 `UNARMED`、`IDLE`、`MOVING`、`STOPPING`、`STOPPED` 或 `FAULT`。校准核验和腕部设备配置完成后，本地页面通过 `POST /api/device/arm` 申请接管，控制端核验当前姿态接近采样中立位并确认舵机保持力。移动只接受 `{"direction":"LEFT","step":1,"source":"voice"}` 或 `RIGHT`。一步为 6 个编码器刻度。控制端拒绝超出示范区间、未接管或正在移动时提交的请求。停止保持当前位置并锁定语音移动。仿真接口调用兼容原字段。
+
+`STOPPED` 时，操作员可通过 `POST /api/device/arm` 明确恢复。仍由舵机稳定保持时，控制端核对当前位置、目标、扭矩和工作范围，只解除指令锁定。舵机卸力时，需托稳并确认采样中立位后按首次接管流程恢复。采样不稳返回 409，允许重试。
+
+实机工作范围仍受左右转向示范端点与每个舵机的校准限位约束。肩部俯仰、肘、腕和夹爪可相对采样中立位偏差 ±24 编码器刻度。超出时返回偏差最大的关节及其刻度值。控制端接管时保持现场确认的当前姿态。
+
+首次接管时，底座朝向允许偏离采样中立位 ±12 编码器刻度。超出时按现场采样的左右符号提示手动修正方向和角度。
+
+网页「取消实机操控」沿用 `POST /api/device/stop`，同时关闭本页语音监听并清除中立位确认。控制端确认停稳后保持当前机位，重新接管仍需确认。
+
+实机状态的 `torqueHeld` 表示已知的扭矩保持状态。故障时为 `null`。本机操作员确认已托稳后可发起 `POST /api/device/release`，请求体须为 JSON `{"supported":true}`。实机端仅在 `STOPPED` 且运动反馈确认静止时解除扭矩。成功后确认六轴卸力，返回 `STOPPED` 与 `torqueHeld: false`。关闭网页只请求停止。
+
+实机批量反馈不可用时，控制端在同一连接中改用逐轴读取该寄存器。逐轴读取也失败时，控制端保持故障锁定并返回具体寄存器或姿态原因。
 
 响应示例：
 
@@ -78,6 +99,8 @@
 
 ## 摄影模型接口
 
+网页模型入口统一为顶部「设置」（`#settings`），摄影助手内的「模型设置」链接也进入此页。沿用下述会话接口，请求字段保持兼容；默认 LLM 为汇云 `qwen3.5-27b`，基础地址 `https://zgc.apihy.com/v1`，模型列表地址 `/v1/models` 不用于推理。可手选百炼 `qwen3.5-flash-2026-02-23`，百炼调用关闭思考。API 地址、模型名称及播报/显示偏好仅在浏览器 localStorage 保存；密钥不持久化，提交后清空输入并显示明确的提交及成功/失败状态；切换服务商、离开设置或页面卸载时清空相应输入。切至外部标签页、调整语音型号或填写 Workspace 时保留未提交密钥，方便完成配置。工作台语音默认选择下述 UniAPI whisper-1/tts-1，无需百炼账号或 Workspace，未配置时提示，不回退浏览器；原 `/api/ai/asr`、`/api/ai/tts` 及本机配置保持兼容。服务状态只读展示，不自动测试外部模型。
+
 这些端点只接受来自本机工作台的请求。使用 HTTPS 调用 OpenAI 兼容的 Chat Completions 接口，模型需支持文字和图片输入。默认允许的基础地址如下，模型名称以该服务商提供的视觉模型为准。
 
 | 服务商 | API 基础地址 |
@@ -87,16 +110,18 @@
 | 硅基流动 | `https://api.siliconflow.cn/v1` |
 | 阿里云百炼（中国内地） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | 上海交通大学「致远一号」 | `https://models.sjtu.edu.cn/api/v1` |
+| 汇云（团队已配置） | `https://zgc.apihy.com/v1` |
+| UniAPI（团队已配置） | `https://api.uniapi.io/v1` |
 
 使用「致远一号」时，按学校指南填写支持图片输入的模型调用名 `qwen`，并在校园网或交大 VPN 下连接。[交我算 API 使用文档](https://apps.hpc.sjtu.edu.cn/posts/claw-guide-sjtu-api)
 
-本机部署者可使用 `LENSMIND_AI_ALLOWED_HOSTS` 覆盖默认列表，填写逗号分隔的可信域名。只接受精确域名，禁用上游重定向。使用 Windows 浏览器输入密钥时，通过本机工作台窗口提交。密钥仅存在本机服务的内存会话中，断开连接、服务重启或 30 分钟有效期结束后需重新填写。
+本机部署者可使用 `LENSMIND_AI_ALLOWED_HOSTS` 覆盖默认列表，填写逗号分隔的可信域名。只接受精确域名，禁用上游重定向。出现「该模型服务商未在本机启用」说明请求被本机域名名单拒绝，尚未发送给服务商；修改配置后须重启 Spring Boot。域名获准不代表模型或账户已可用，文字/视觉窗口仍需支持图片输入的 Chat Completions 模型；UniAPI 的独立 ASR/TTS 接口不由此窗口调用。使用 Windows 浏览器输入密钥时，通过本机工作台窗口提交。密钥仅存在本机服务的内存会话中，断开连接、服务重启或 30 分钟有效期结束后需重新填写。
 
 | 方法与路径 | 输入 | 成功结果 |
 | --- | --- | --- |
 | `GET /api/ai/session` | 无 | `{ "connected": false }` 或连接状态、`id`、`model`、`host`、`expiresAt` |
 | `POST /api/ai/session` | JSON，必填 `baseUrl`、`model`、`apiKey` | 用生成的色块测试视觉接口后返回连接状态和标识，密钥不在响应中 |
-| `DELETE /api/ai/session` | 无 | `{ "connected": false }`，清除服务端会话 |
+| `DELETE /api/ai/session` | 无 | `{ "connected": false }`，只清除摄影连接，保留独立语音会话 |
 | `POST /api/ai/analyze` | JSON，必填 `connectionId`、`scene`，可选 `prompt`、`reference` | `summary`、`observations`、`targets`、`steps` |
 | `POST /api/ai/analyze`（`mode: "assistant"`） | 必填 `connectionId` 和非空 `prompt`，看图时可附 `scene` 与可选 `reference` | 同上，另可含 `settings` |
 
@@ -119,6 +144,28 @@
 `cells` 是期望区域，按画面从左上到右下逐行编号 0～8。当前观测位置用 `observations` 单独表示。返回建议用于展示和可选的浏览器朗读，不调用控制端或触发拍照。摄影助手的文字、语音和分析按钮共用一个输入。连接模型并开启摄像头后，主动发出的看图或动作建议请求使用此接口，自动构图播报仍使用本机的 `/api/vision/person`。停止、关闭相机或切换参考图时页面会丢弃待返回的建议。已发送给服务商的请求仍可能处理完成。现有本机人物检测、拍摄和设备接口保持兼容。
 
 错误返回 `{ "message": "…" }`，其中 400 表示输入无效或域名未启用，403 表示来源不符合本机要求，409 表示会话过期或连接已变更，413 表示请求过大，415 表示非 JSON 请求，502 表示服务商拒绝请求或响应无效，503 表示额度或限流，504 表示超时。错误不会把服务商原始响应透传到浏览器。
+
+## 固定模型语音会话
+
+2026-11-28 新增 UniAPI TTS `gemini-3.8-flash-lite-tts`（默认，Kore），与 Whisper 搭配；旧 `tts-1` 请求继续兼容，作为手选备用。Gemini 调用固定 `https://api.uniapi.io/gemini/v1beta/models/gemini-3.8-flash-lite-tts:generateContent`，`x-goog-api-key` 鉴权，后端解码校验 JSON inlineData 中的 WAV，响应仍为 WAV 音频与 LIVE 标记。共享调用预算、会话有效期和失败不回退规则不变。Gemini 的 rate 为快慢风格提示，不保证精确倍速。
+
+仅供本机同源工作台使用，校验方式与摄影模型接口一致。与摄影连接独立，密钥只在后端会话内存保留 30 分钟。保存不调用供应商，响应中的 `verified:false` 不表示连接失败，而表示尚未验证云端鉴权。可用模型和操作步骤见 [MODEL_PRESETS.md](MODEL_PRESETS.md)。
+
+| 方法与路径 | 输入 | 成功结果 |
+| --- | --- | --- |
+| `GET /api/ai/speech/session` | 无 | 未配置时返回 `configured:false` 与本机 UniAPI Key 是否存在的布尔值 `localUniapiKeyConfigured`；配置后返回 `configured/id/provider/asr/tts/voice/workspace/expiresAt/verified/notice`，不返回 Key |
+| `POST /api/ai/speech/session` | JSON：`provider`、`asr`、`tts`、`workspace`、`apiKey` | 本机配置状态；两项均为 `browser` 时清除语音会话 |
+| `DELETE /api/ai/speech/session` | 无 | `{ "configured": false }`，只清除语音连接 |
+| `POST /api/ai/speech/asr` | multipart：`connectionId`、`audio` | `{ "text": "拍照", "model": "whisper-1", "mode": "LIVE" }`，`model` 随当前会话返回 |
+| `POST /api/ai/speech/tts` | JSON：`connectionId`、`text`、`rate` | WAV/MP3，`X-LensMind-Mode: LIVE`、`X-LensMind-Audio: speech` |
+
+`provider` 为 `uniapi`（默认选项）或 `dashscope`。UniAPI 允许 `whisper-1` ASR、`gemini-3.8-flash-lite-tts` TTS（默认 Kore）/`tts-1`（备用 alloy）或 `browser`，`workspace` 留空且不要求百炼账号；`apiKey` 留空时先沿用同服务商有效会话，否则读取服务器 `lensmind.uniapi-key`/`LENSMIND_UNIAPI_KEY`。调用地址由后端锁定为 `https://api.uniapi.io/v1/audio/transcriptions`、`/v1/audio/speech`。
+
+百炼只允许 `fun-asr-realtime-2026-02-28`/`qwen-audio-3.1-tts-flash`（音色 `longanhuan_v3.1`）或 `browser`，必须提供北京地域 Workspace ID（1～80 个字母、数字、连字符，首位字母或数字），后端据此生成官方 WSS 地址。仅同服务商、同 Workspace 的有效会话可留空沿用 Key，不会读取 UniAPI Key。旧请求省略 `provider` 时按已知型号推断服务商，以兼容之前的百炼调用；禁止混搭跨服务商模型、传入任意语音 URL 或自动转发另一平台的密钥。
+
+ASR 接收 16kHz、16bit、小端单声道 PCM WAV，0.1～15 秒，上传不超过 500KB；TTS 文本最多 160 字，`rate` 为 0.8～1.2。浏览器采集采用约 650ms 静音断句、约 10 秒长句切段，停止/切后台/离开拍摄页时丢弃晚到结果。UniAPI 使用 OpenAI 兼容 HTTP Audio，百炼使用 WebSocket；浏览器按完整短句请求和播放，尚非端到端流式。已发出的请求可能继续处理和计费。
+
+会话丢失或 ID 变化返回 409，参数错误返回 400，来源不合法返回 403，无识别文字返回 422，共享尝试额度或并发超限返回 429，供应商失败返回 502，超时返回 504；不透传供应商原始报错，也不自动换模型或伪造结果。所有真实模型接口共享 `LiveCallBudget`；旧接口的 `MOCK` 不会代替工作台用户主动开启的云端会话。
 
 ## 前端模块接口
 

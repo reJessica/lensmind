@@ -50,6 +50,33 @@ public class ProviderClient {
                 .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(payload))).build();
         return send(request, maxBytes);
     }
+    public byte[] geminiSpeech(AiProperties.Endpoint endpoint, String text, double rate) {
+        require(endpoint);
+        var payload = Map.of("contents", List.of(Map.of("parts", List.of(Map.of("text", text,
+                "speech_metadata", Map.of("style", rate < 1 ? "Speak slowly in Mandarin Chinese." : rate > 1 ? "Speak briskly in Mandarin Chinese." : "Speak naturally in Mandarin Chinese."))))),
+                "generationConfig", Map.of("responseModalities", List.of("AUDIO"), "speechConfig",
+                        Map.of("voiceConfig", Map.of("prebuiltVoiceConfig", Map.of("voiceName", "Kore")))));
+        var request = HttpRequest.newBuilder(URI.create(endpoint.url()))
+                .timeout(Duration.ofSeconds(Math.max(1, Math.min(60, properties.timeoutSeconds()))))
+                .header("x-goog-api-key", endpoint.apiKey()).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(payload))).build();
+        return geminiWav(send(request, 12_000_000).bytes());
+    }
+    byte[] geminiWav(byte[] json) {
+        try {
+            var parts = mapper.readTree(json).path("candidates").path(0).path("content").path("parts");
+            for (var part : parts) {
+                var inline = part.path("inlineData");
+                if (inline.isMissingNode()) inline = part.path("inline_data");
+                String mime = inline.path("mimeType").asString(inline.path("mime_type").asString(""));
+                if (!"audio/wav".equalsIgnoreCase(mime)) continue;
+                byte[] audio = java.util.Base64.getDecoder().decode(inline.path("data").asString(""));
+                if (audio.length > 8_000_000 || !"audio/wav".equals(SpeechController.audioType(audio))) throw AiException.badOutput();
+                return audio;
+            }
+        } catch (Exception ignored) { throw AiException.badOutput(); }
+        throw new AiException(502, "Gemini 未返回有效 WAV 音频，请检查模型通道。");
+    }
     public JsonNode transcribeMultipart(AiProperties.Endpoint endpoint, byte[] wav) {
         require(endpoint);
         String boundary = "LensMind" + UUID.randomUUID().toString().replace("-", "");

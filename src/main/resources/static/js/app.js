@@ -1,10 +1,14 @@
-import { deviceApi } from './api.js';
+import { calibrationApi, deviceApi } from './api.js';
 import { attachDrag, clamp, CROP_RATIOS, cropRatioLabel, cropRegion, MAX_ZOOM, MIN_ZOOM, positionRegion, renderCrop } from './crop.js';
-import { isSpokenShutter, parseCommand } from './commands.js';
+import { isSpokenShutter, parseCommand, spokenYawDirection } from './commands.js';
 import { capturePositionHint, COMPOSITION_X, composeAdvice, compositionRegions, cropVisionFrame, fitFrame, liveCompositionCue, pendingPersonTarget, startVision } from './vision.js';
 import { gridLabel } from './grid.js';
 import { isAiCommand, setupAi } from './ai.js';
 import { createSpeechInput, createVoiceGuide } from './voice.js';
+import { setupSettings } from './settings.js';
+import { setupCloudSpeech, createCloudSpeechInput, routeSpeechInput } from './cloud-speech.js';
+import { isCloudTts } from './model-presets.js';
+import { openWristCamera } from './wrist-camera.js';
 
 const $ = id => document.getElementById(id);
 const preview = $('preview');
@@ -13,7 +17,8 @@ const video = $('camera-video');
 const stopButtons = document.querySelectorAll('[data-stop]');
 const state = {
   device: null, online: false, stopped: false, stopPhase: null, stopIssue: '', stopResetConfirmed: false,
-  deviceAction: null, capturePending: false, simulatedImage: null,
+  deviceAction: null, capturePending: false, simulatedImage: null, releasePending: false,
+  calibration: null, calibrationPending: false, neutralRevision: null, wristCamera: '',
   epoch: 0, timer: null, stream: null, cameraPending: false, cameraRequest: 0, animation: null,
   page: null, captureMode: 'assisted',
   composition: 'center', framing: 'any', sceneTarget: null,
@@ -32,16 +37,46 @@ function cameraCropSource() {
     width: crop.width * video.videoWidth, height: crop.height * video.videoHeight };
 }
 const ai = setupAi(cameraCropSource, receiveAdvice);
-const speech = createSpeechInput({
-  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+const cloud = setupCloudSpeech();
+const speechHandlers = {
   onState: showMicrophoneStatus,
   onText: text => { $('command-input').value = text; },
-  onCommand: runCommand,
+  onCommand: text => runCommand(text, 'voice'),
+};
+const browserSpeech = createSpeechInput({
+  Recognition: window.SpeechRecognition || window.webkitSpeechRecognition,
+  ...speechHandlers,
 });
+const cloudSpeech = createCloudSpeechInput({ cloud, ...speechHandlers });
+const speech = routeSpeechInput(browserSpeech, cloudSpeech);
 const voice = createVoiceGuide({
   synthesis: window.speechSynthesis, Utterance: window.SpeechSynthesisUtterance,
-  onError: () => setVoiceEnabled(false, '语音播报不可用，可以查看文字提示或稍后重试。'),
+  useCloud: () => isCloudTts($('settings-tts-model').value),
+  synthesize: cloud.synthesize,
+  onError: error => setVoiceEnabled(false, error?.message || '语音播报不可用，可以查看文字提示或稍后重试。'),
   onPlayback: speech.playback,
+  onStatus: (phase, message) => {
+    const busy = phase === 'loading' || phase === 'playing';
+    $('settings-voice-preview').textContent = busy ? '取消试听' : '试听播报';
+    $('settings-voice-preview').setAttribute('aria-busy', String(busy));
+    const cloudTts = isCloudTts($('settings-tts-model').value);
+    const messages = {
+      loading: cloudTts ? '正在请求云端合成，可能需要等待约 60 秒；可点击取消，请勿重复提交。' : '正在启动浏览器播报…',
+      playing: '正在播放；如听不到声音，请检查系统音量、标签页静音和音频输出设备。',
+      ended: '播报已结束。', cancelled: '已取消等待或播放；已发送的云端请求仍可能计费。',
+    };
+    $('settings-voice-preview-status').textContent = phase === 'error' ? `试听失败：${message}` : messages[phase] || '';
+  },
+});
+const settings = setupSettings({
+  onChange: applyPreferences,
+  onPreviewVoice: () => {
+    if (voice.busy) { voice.cancel(); return; }
+    setVoiceEnabled(true);
+    voice.speak('你好，我是灵眸。请看向镜头，放松肩膀。');
+  },
+  voiceAvailable: () => voice.available, speechAvailable: () => speech.available,
+  onSpeechChange: () => { speech.stop(); setVoiceEnabled(false); },
 });
 let toastTimer;
 let polling = false;
@@ -69,12 +104,12 @@ function notify(message, error = false) {
 
 function showPage(focus = true) {
   const requested = location.hash.slice(1);
-  const page = requested === 'studio' || requested === 'gallery' ? requested : 'home';
+  const page = ['studio', 'gallery', 'settings'].includes(requested) ? requested : 'home';
   if (page === state.page) return;
   const leavingStudio = state.page === 'studio';
+  if (state.page === 'settings') { ai.clearKey(); cloud.clearKey(); setVoiceEnabled(false); }
   state.page = page;
   if (page !== 'gallery') $('photo-dialog').close();
-  if (page !== 'studio') $('ai-dialog').close();
   if (leavingStudio) {
     cancelCapture();
     speech.stop();
@@ -88,11 +123,12 @@ function showPage(focus = true) {
     if (link.dataset.nav === page) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  $('stop-button').hidden = $('help-stop').hidden = page !== 'studio';
+  $('stop-button').hidden = $('help-stop').hidden = page !== 'studio' && page !== 'settings';
   document.title = `${$(`${page}-title`).textContent} · 灵眸 LensMind`;
   if (page === 'gallery') {
     setText($('review-copy'), leavingStudio ? '拍摄已结束。点成片查看、调整裁剪或下载。' : '点成片可以查看大图、调整裁剪或下载。');
   }
+  if (page === 'settings') { settings.refresh(); ai.refreshConnection(); cloud.refresh(); }
   updateAvailability();
   if (focus) {
     $(`${page}-title`).focus({ preventScroll: true });
@@ -144,7 +180,8 @@ function updateDevice(device) {
   if (!state.online) state.stopResetConfirmed = false;
   // 停止保持锁定，直到收到复位确认。
   state.stopped = state.stopped || device.state === 'STOPPED';
-  $('service-status').textContent = state.stopIssue || (state.online ? (state.stopped ? '已停止' : '模拟控制服务已连接') : '设备已断开');
+  $('service-status').textContent = state.stopIssue || (device.mode === 'SO101' ? device.message
+    : state.online ? (state.stopped ? '已停止' : '模拟控制服务已连接') : '设备已断开');
   $('service-dot').classList.toggle('offline', !state.online || state.stopped);
   const so101 = device.so101;
   const deviceTools = $('device-tools');
@@ -172,21 +209,120 @@ function updateDevice(device) {
 
 function updateAvailability() {
   renderStopButtons();
+  settings.updateDevice(state.device, state.online);
   const blocked = state.page !== 'studio' || !state.online || Boolean(state.stopped || state.stopPhase || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending);
   const positionHint = state.capturePending ? '' : currentPositionHint();
   document.querySelectorAll('[data-direction]').forEach(button => { button.disabled = blocked; });
   document.querySelectorAll('button[data-capture-mode]').forEach(button => { button.disabled = state.capturePending; });
-  $('capture-button').disabled = blocked || Boolean(positionHint);
+  const calibrationHint = calibrationCaptureHint();
+  const cameraHint = state.wristCamera && !state.stream ? '请先开启腕部摄像头。' : '';
+  const armHint = realCaptureHint();
+  $('capture-button').disabled = blocked || state.calibrationPending || Boolean(positionHint || calibrationHint || cameraHint || armHint);
+  $('calibration-start').disabled = state.calibrationPending || state.capturePending;
+  $('calibration-verify').disabled = state.calibrationPending || state.capturePending;
+  $('neutral-position-confirm').disabled = state.calibrationPending || state.capturePending;
+  const realState = state.device?.mode === 'SO101' ? state.device.state : null;
+  $('so101-cancel').hidden = state.page !== 'studio' || realState === null;
+  $('so101-cancel').disabled = Boolean(state.stopPhase) || state.releasePending;
+  $('so101-torque-controls').hidden = realState === null;
+  const torqueHeld = state.device?.torqueHeld;
+  $('so101-release').disabled = !state.online || realState !== 'STOPPED' || torqueHeld !== true
+    || Boolean(state.stopPhase || state.deviceAction || state.releasePending);
+  setText($('so101-torque-status'), state.releasePending ? '正在核验六轴卸力状态，请继续托稳。'
+    : realState === 'STOPPED' && torqueHeld === true ? '已停止，舵机仍保持姿态。托稳后可以卸力。'
+    : realState === 'STOPPED' && torqueHeld === false ? '已停止，舵机已卸力。'
+    : realState === 'FAULT' || !state.online ? '暂未确认实机状态。'
+    : '请先取消操控，等机械臂停稳。');
+  $('so101-arm').hidden = !['UNARMED', 'STOPPED'].includes(realState) || !state.neutralRevision;
+  setText($('so101-arm'), realState === 'STOPPED' ? '重新启用实机语音控制' : '启用实机语音控制（舵机上扭矩）');
+  $('so101-arm').disabled = !state.stream || state.calibrationPending || Boolean(state.deviceAction || state.stopPhase);
+  $('so101-voice-status').hidden = state.device?.mode !== 'SO101' || !state.neutralRevision;
+  setText($('so101-voice-status'), state.device?.state === 'IDLE'
+    ? '打开麦克风后说「相机向左转一点」或「相机向右转一点」。'
+    : realState === 'UNARMED' ? '开启腕部摄像头。继续托稳机械臂，准备好后再启用语音控制。'
+    : realState === 'STOPPED' ? '如机械臂处于卸力状态，请托稳并保持中立位，再重新启用语音控制。'
+    : state.device?.message || '');
   $('home-button').disabled = !state.online || Boolean(state.stopPhase || state.deviceAction || state.capturePending || state.guidePending);
   const hint = state.stopPhase === 'stopping' ? '正在停止并取消本次拍摄。'
     : state.stopPhase === 'resetting' ? '模拟机位正在复位，完成后可以继续拍。'
     : state.stopIssue ? `${state.stopIssue}。请检查控制服务，再点右上角的按钮重试。`
-    : state.stopped ? (state.device?.mode === 'MOCK' ? '模拟机位已停止。点击「停止」可重新复位。' : '控制端已停止，请确认设备状态。')
+    : state.stopped ? (state.device?.mode === 'MOCK' ? '模拟机位已停止。点击「停止」可重新复位。' : '语音移动已锁定，可在中立位面板重新启用。')
     : !state.online ? '等控制服务连接后可拍摄。'
-    : state.guidePending ? '请先点击「已完成，继续」。' : positionHint;
+    : calibrationHint || cameraHint || armHint || (state.guidePending ? '请先点击「已完成，继续」。' : positionHint);
   setText($('capture-hint'), hint);
   $('capture-hint').classList.toggle('stop-hint', state.stopped || Boolean(state.stopPhase));
   $('capture-hint').hidden = !hint;
+}
+
+function realCaptureHint(device = state.device) {
+  if (device?.mode !== 'SO101') return '';
+  if (device.state !== 'IDLE') return '请先启用实机语音控制，并等待机械臂停稳。';
+  if (!state.vision?.stable) return '请等取景画面中的人物站稳。';
+  return '';
+}
+
+function calibrationCaptureHint() {
+  if (!state.calibration) return '正在确认校准要求，请稍后再试。';
+  if (!state.calibration.ready) return '请先完成并核验机械臂校准。';
+  if (state.calibration.required && !state.neutralRevision) return '请先点击「已保持中立位」。';
+  return '';
+}
+
+function showCalibration(status) {
+  const previousCamera = state.wristCamera;
+  if (status) state.wristCamera = status.wristCamera || '';
+  state.calibration = status;
+  const phase = status?.phase;
+  if (phase !== 'VERIFIED' || state.neutralRevision !== status.revision) state.neutralRevision = null;
+  $('calibration-task').hidden = !status?.required;
+  $('calibration-start').hidden = phase !== 'REQUIRED' && phase !== 'VERIFIED';
+  setText($('calibration-start'), phase === 'VERIFIED' ? '重新校准' : '开始校准');
+  $('calibration-steps').hidden = phase !== 'PENDING';
+  $('neutral-position').hidden = phase !== 'VERIFIED';
+  $('neutral-position-confirm').hidden = Boolean(state.neutralRevision);
+  setText($('neutral-position-status'), state.neutralRevision
+    ? '已确认中立位。调整好机位后，等机械臂停稳再拍摄。'
+    : '请手动将机械臂摆到中立位并保持。');
+  setText($('calibration-status'), status?.message || '');
+  setText($('calibration-command'), phase === 'PENDING' ? status.command : '');
+  if (state.wristCamera !== previousCamera) {
+    if (state.stream || state.cameraPending) releaseCamera();
+    else showIdleCameraSource();
+    $('device-tools').hidden = Boolean(state.wristCamera);
+    drawDemo();
+  }
+  updateAvailability();
+}
+
+async function refreshCalibration() {
+  try {
+    const status = await calibrationApi.status();
+    showCalibration(status);
+    return status;
+  } catch (error) {
+    showCalibration(null);
+    throw error;
+  }
+}
+
+async function requireCalibration() {
+  await refreshCalibration();
+  const hint = calibrationCaptureHint();
+  if (hint) throw new Error(hint);
+}
+
+async function runCalibrationAction(action) {
+  if (state.capturePending || state.calibrationPending) return;
+  state.calibrationPending = true;
+  updateAvailability();
+  try {
+    showCalibration(await action());
+  } catch (error) {
+    notify(error.message, true);
+  } finally {
+    state.calibrationPending = false;
+    updateAvailability();
+  }
 }
 
 function renderStopButtons() {
@@ -201,10 +337,23 @@ function renderStopButtons() {
     setText(button.querySelector('[data-stop-icon]'), status === 'restored' || status === 'stopped' ? '✓' : status === 'failed' ? '!' : '■');
     if (state.stopPhase) button.setAttribute('aria-disabled', 'true');
     else button.removeAttribute('aria-disabled');
-    const action = status === 'failed' ? '点击重试' : '停止当前操作';
+    const action = status === 'failed' ? '点击重试'
+      : status === 'stopped' && state.device?.mode === 'SO101' ? '查看语音恢复入口' : '停止当前操作';
     button.title = state.stopPhase ? label : action;
     button.setAttribute('aria-label', status === 'ready' || state.stopPhase ? label : `${label}。${action}`);
   }
+}
+
+function handleStopButton() {
+  if (state.device?.mode === 'SO101' && state.device.state === 'STOPPED' && !state.stopPhase && !state.stopIssue) {
+    $('calibration-task').scrollIntoView({ block: 'center' });
+    const next = ['neutral-position-confirm', 'so101-arm', 'camera-button']
+      .map(id => $(id)).find(button => !button.hidden && !button.disabled);
+    next?.focus({ preventScroll: true });
+    notify('语音移动已锁定。请在校准面板重新启用。');
+    return;
+  }
+  stopAll();
 }
 
 function liveCropRegion() {
@@ -438,7 +587,10 @@ function showVisionReading(analysis) {
     const cropped = cropVisionFrame(analysis, liveCropRegion());
     voice.observe(liveCompositionCue(cropped, state.composition, state.peopleTargets, positionOptions()));
   } else voice.observe('');
-  if (analysis?.status === 'lost' && previousStatus !== 'lost') log('目标丢失，等待人物回到画面。');
+  if (analysis?.status === 'lost' && previousStatus !== 'lost') {
+    log('目标丢失，等待人物回到画面。');
+    if (state.device?.mode === 'SO101' && state.deviceAction) stopAll();
+  }
   updateAvailability();
 }
 
@@ -467,6 +619,10 @@ async function pollStatus() {
 
 function drawDemo() {
   if (state.stream) return;
+  if (state.wristCamera) {
+    ctx.clearRect(0, 0, preview.width, preview.height);
+    return;
+  }
   if (state.simulatedImage) {
     const frame = state.device.frame;
     setPreviewSize(frame.width, frame.height);
@@ -545,7 +701,7 @@ function cancelCapture() {
   }
 }
 
-async function stopAll() {
+async function stopAll(cancelControl = false) {
   if (state.stopPhase) return;
   const pendingAction = state.deviceAction;
   state.epoch++;
@@ -568,7 +724,9 @@ async function stopAll() {
     if (!stopped.connected || stopped.state !== 'STOPPED') throw new Error('控制端未返回已停止状态');
     if (!await syncDevice(stopped, epoch)) return;
     if (stopped.mode !== 'MOCK' || stopped.so101) {
-      notify('已停止，倒计时和人物指导已取消。');
+      notify(cancelControl && stopped.mode === 'SO101'
+        ? '已取消实机操控，机械臂保持当前位置。重新操控前请确认中立位。'
+        : '已停止，倒计时和人物指导已取消。');
       return;
     }
     state.stopPhase = 'resetting';
@@ -598,7 +756,12 @@ async function stopAll() {
   }
 }
 
-async function move(direction) {
+async function move(direction, source) {
+  if (state.wristCamera) {
+    if (source !== 'voice') return notify('机位调整使用语音指令。', true);
+    if (!state.neutralRevision || !state.stream) return notify('请先确认中立位并开启腕部摄像头。', true);
+    if (state.device?.mode !== 'SO101') return notify('实机控制端尚未接入，语音指令未执行。', true);
+  }
   if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.guidePending) {
     notify('当前不能调整机位，请等待拍摄、指导或复位完成。', true);
     return;
@@ -606,14 +769,14 @@ async function move(direction) {
   const epoch = ++state.epoch;
   voice.cancel();
   state.stopResetConfirmed = false;
-  const action = state.deviceAction = deviceApi.move(direction);
+  const action = state.deviceAction = deviceApi.move(direction, 1, source);
   updateAvailability();
-  $('preview-state').textContent = '模拟机位调整';
+  $('preview-state').textContent = state.wristCamera ? '实机机位调整' : '模拟机位调整';
   try {
     const device = await action;
     if (epoch !== state.epoch) return;
     if (!await syncDevice(device, epoch)) return;
-    $('preview-state').textContent = device.so101 ? device.message : '模拟微调完成';
+    $('preview-state').textContent = device.so101 || device.mode === 'SO101' ? device.message : '模拟微调完成';
     log(device.message);
   } catch (error) {
     if (epoch === state.epoch) { $('preview-state').textContent = '调整暂停'; notify(error.message, true); }
@@ -623,7 +786,55 @@ async function move(direction) {
   }
 }
 
+async function armAtNeutral() {
+  if (!state.neutralRevision || !state.stream || !['UNARMED', 'STOPPED'].includes(state.device?.state) ||
+      state.deviceAction || state.stopPhase) return;
+  const epoch = ++state.epoch;
+  const action = state.deviceAction = deviceApi.arm();
+  updateAvailability();
+  try {
+    const device = await action;
+    if (epoch !== state.epoch || device.state !== 'IDLE') return;
+    state.stopped = false;
+    state.stopIssue = '';
+    if (await syncDevice(device, epoch)) notify('已启用实机语音控制。请打开麦克风。');
+  } catch (error) {
+    if (epoch === state.epoch) notify(error.message, true);
+  } finally {
+    state.deviceAction = null;
+    updateAvailability();
+  }
+}
+
+async function releaseRealTorque() {
+  if (!state.online || state.device?.mode !== 'SO101' || state.device.state !== 'STOPPED'
+      || state.device.torqueHeld !== true || state.stopPhase || state.deviceAction || state.releasePending) return;
+  if (!window.confirm('请先用稳固支撑物托住机械臂，手指避开关节和夹爪。确认已支撑好并可安全卸力？')) return;
+  state.releasePending = true;
+  speech.stop();
+  setVoiceEnabled(false);
+  cancelCapture();
+  const epoch = ++state.epoch;
+  state.neutralRevision = null;
+  showCalibration(state.calibration);
+  const action = state.deviceAction = deviceApi.release();
+  updateAvailability();
+  try {
+    const device = await action;
+    if (epoch !== state.epoch) return;
+    if (device.state !== 'STOPPED' || device.torqueHeld !== false) throw new Error('控制端未确认六轴卸力');
+    if (await syncDevice(device, epoch)) notify('已结束操控，六轴均已卸力。');
+  } catch (error) {
+    if (epoch === state.epoch) notify(`${error.message}。请继续托稳机械臂。`, true);
+  } finally {
+    state.releasePending = false;
+    state.deviceAction = null;
+    updateAvailability();
+  }
+}
+
 async function home() {
+  if (state.wristCamera) return notify('实机回中立位需要现场确认。', true);
   if (state.stopPhase || state.deviceAction || state.guidePending) return notify('请等待当前操作完成。');
   cancelCapture();
   const epoch = ++state.epoch;
@@ -644,6 +855,8 @@ async function home() {
 
 async function capture() {
   if (state.page !== 'studio') return;
+  if (state.calibrationPending) return notify('请等待校准任务更新。', true);
+  if (state.wristCamera && !state.stream) return notify('请先开启腕部摄像头。', true);
   if (!state.online || state.stopped || state.deviceAction || state.capturePending || state.guidePending || state.cameraPending || (!state.stream && !state.simulatedImage && !demoImage.naturalWidth)) {
     notify('暂时无法拍摄，请检查控制服务或等待当前操作完成。', true);
     return;
@@ -658,9 +871,14 @@ async function capture() {
   const epoch = ++state.epoch;
   updateAvailability();
   try {
+    await requireCalibration();
+    if (state.wristCamera && !state.stream) throw new Error('腕部摄像头画面不可用');
+    if (epoch !== state.epoch) return;
     const device = await deviceApi.status();
     if (epoch !== state.epoch) return;
     if (!device.connected || device.state !== 'IDLE') throw new Error('控制端尚未就绪，拍摄已取消');
+    const armHint = realCaptureHint(device);
+    if (armHint) throw new Error(armHint);
     if (!await syncDevice(device, epoch)) return;
     const deadline = performance.now() + Number($('delay').value) * 1000;
     const tick = async () => {
@@ -675,9 +893,14 @@ async function capture() {
         return;
       }
       try {
+        await requireCalibration();
+        if (state.wristCamera && !state.stream) throw new Error('腕部摄像头画面不可用');
+        if (epoch !== state.epoch) return;
         const current = await deviceApi.status();
         if (epoch !== state.epoch) return;
         if (!current.connected || current.state !== 'IDLE') throw new Error('控制端状态变化，已取消拍摄');
+        const armHint = realCaptureHint(current);
+        if (armHint) throw new Error(armHint);
         if (!state.stream && current.frame?.id !== device.frame?.id) throw new Error('倒计时期间机位已变化，已取消拍摄');
         if (state.stream && video.readyState < 2) throw new Error('摄像头画面不可用，已取消拍摄');
         $('countdown-overlay').hidden = true;
@@ -922,14 +1145,18 @@ function zoomCrop(delta) {
   return true;
 }
 
-function runCommand(text) {
+function runCommand(text, source) {
   if (state.page !== 'studio' || !text.trim()) return;
-  const command = parseCommand(text, { depthMovement: Boolean(state.device?.so101) });
+  if (source === 'voice' && state.wristCamera) {
+    const direction = spokenYawDirection(text);
+    if (direction) return move(direction, source);
+  }
+  const command = parseCommand(text, { depthMovement: Boolean(state.device?.so101 || state.wristCamera) });
   log(`你：${text}`);
   const directShutter = isSpokenShutter(text) && (command.type === 'CAPTURE' || command.type === 'RETAKE');
   const question = /[?？]|怎么|如何|能不能|为什么|什么时候|什么样|是什么/.test(text);
   const directControl = directShutter || command.type === 'GUIDE_DONE' || (!question && ['STOP', 'MOVE', 'HOME', 'CAMERA_DISTANCE'].includes(command.type));
-  if (directControl) return executeCommand(command, text);
+  if (directControl) return executeCommand(command, text, source);
   const localRequest = !question && !isAiCommand(text, command.type) && ['POSITION_PEOPLE', 'POSITION_BODY',
     'POSITION_HEAD', 'POSITION_SELECTED', 'SELECT_PERSON', 'CLEAR_HEAD_TARGET', 'ZOOM', 'COMPOSE', 'RATIO'].includes(command.type);
   if (ai.connected && !(command.type === 'GUIDE' && /预设|本地/.test(text))) {
@@ -943,14 +1170,17 @@ function runCommand(text) {
   executeCommand(command, text);
 }
 
-function executeCommand(command, text) {
+function executeCommand(command, text, source) {
   if (command.ratio) setRatio(command.ratio);
   switch (command.type) {
     case 'STOP': stopAll(); break;
     case 'HOME': home(); break;
     case 'CAPTURE': capture(); break;
     case 'RETAKE': retake(); break;
-    case 'MOVE': move(command.direction); break;
+    case 'MOVE':
+      if (state.wristCamera) return notify('请用麦克风说「相机向左转一点」或「相机向右转一点」。');
+      move(command.direction, source);
+      break;
     case 'CAMERA_DISTANCE': notify(`已理解相机需要${command.direction === 'NEARER' ? '靠近' : '远离'}，当前演示只支持上下左右微调。`); break;
     case 'SELECT_PERSON':
       if (visiblePeople().some(person => person.id === command.id)) selectPerson(command.id);
@@ -989,6 +1219,17 @@ function setVoiceEnabled(enabled, message = '') {
   $('voice-status').hidden = !message;
 }
 
+function applyPreferences(preferences) {
+  $('thirds-grid').hidden = !preferences.grid;
+  $('editor-grid').hidden = !preferences.grid || $('photo-dialog').dataset.view !== 'edit';
+  $('live-crop').hidden = !preferences.frame;
+  voice.configure({ rate: preferences.voiceRate, volume: preferences.voiceVolume });
+  $('mic-button').disabled = !speech.available;
+  const enabled = speech.handsFree && preferences.voiceEnabled;
+  if (voice.enabled !== enabled) setVoiceEnabled(enabled);
+  cancelCapture();
+}
+
 function showMicrophoneStatus({ handsFree, listening, message }) {
   const mic = $('mic-button');
   const micLabel = handsFree ? '关闭语音' : '开启语音';
@@ -997,7 +1238,8 @@ function showMicrophoneStatus({ handsFree, listening, message }) {
   mic.title = micLabel;
   mic.setAttribute('aria-pressed', handsFree);
   if (!handsFree && message) setVoiceEnabled(false);
-  const status = message || (handsFree ? (listening ? '正在听，可以说「拍摄」或「停止」。' : '正在开启麦克风…') : '');
+  const provider = $('settings-asr-model').value === 'browser' ? '浏览器' : '云端';
+  const status = message || (handsFree ? (listening ? `${provider}正在听，可以说「拍摄」「停止」或「清空」。` : '正在开启麦克风…') : '');
   setText($('mic-status'), status);
   $('mic-status').hidden = !status;
 }
@@ -1013,7 +1255,7 @@ function setupVoice() {
   }
   mic.addEventListener('click', () => {
     const opening = !speech.handsFree;
-    setVoiceEnabled(opening, !voice.available ? '当前浏览器不支持语音播报，可以查看文字提示。' : '');
+    setVoiceEnabled(opening && settings.preferences.voiceEnabled, !voice.available ? '当前浏览器不支持语音播报，可以查看文字提示。' : '');
     speech.toggleHandsFree();
   });
 }
@@ -1043,15 +1285,18 @@ async function toggleCamera() {
   if (state.page !== 'studio') return;
   cancelCapture();
   if (state.cameraPending) return;
-  if (state.stream) { releaseCamera(); notify('已关闭摄像头，返回模拟场景。'); return; }
+  if (state.stream) { releaseCamera(); notify('已关闭摄像头。'); return; }
   if (!navigator.mediaDevices?.getUserMedia) return notify('无法访问摄像头，请通过 localhost 或 HTTPS 打开页面。', true);
+  if (!state.calibration) return notify('正在确认摄像头配置，请稍后再试。', true);
+  const wristCamera = state.wristCamera;
   const request = ++state.cameraRequest;
   state.cameraPending = true;
   $('camera-button').disabled = true;
   setText($('shoot-source-copy'), '正在等待摄像头权限。');
   updateAvailability();
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1200 }, height: { ideal: 800 } }, audio: false });
+    const stream = wristCamera ? await openWristCamera(navigator.mediaDevices, wristCamera)
+      : await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1200 }, height: { ideal: 800 } }, audio: false });
     if (request !== state.cameraRequest) {
       stream.getTracks().forEach(track => track.stop());
       return;
@@ -1070,22 +1315,22 @@ async function toggleCamera() {
       if (state.stream !== stream) return;
       cancelCapture();
       releaseCamera();
-      notify('摄像头连接中断，已取消拍摄并返回模拟场景。', true);
+      notify('摄像头连接中断，已取消拍摄。', true);
     }));
     draw();
-    $('source-label').textContent = '◉ 电脑摄像头';
+    $('source-label').textContent = wristCamera ? '◉ SO-101 腕部摄像头' : '◉ 电脑摄像头';
     $('camera-button').textContent = '关闭摄像头';
-    setText($('shoot-source-copy'), '当前使用电脑摄像头。');
+    setText($('shoot-source-copy'), wristCamera ? `当前使用腕部摄像头（${wristCamera}）。` : '当前使用电脑摄像头。');
     showVisionReading({ status: 'loading', stable: false });
     state.stopVision = startVision(video, () => ({
       composition: state.composition, framing: state.framing, pinnedIds: state.peopleTargets,
       detectHeads: state.sceneTarget?.part === 'head' || [...state.peopleTargets.values()].some(target => target.part === 'head'),
     }), showVisionReading);
-    notify('电脑摄像头已开启。');
-  } catch {
+    notify(wristCamera ? '腕部摄像头已开启。' : '电脑摄像头已开启。');
+  } catch (error) {
     if (request === state.cameraRequest) {
       releaseCamera();
-      notify('摄像头开启失败，请检查权限或设备占用。', true);
+      notify(error.name === 'Error' ? error.message : '摄像头开启失败，请检查权限或设备占用。', true);
     }
   } finally {
     if (request === state.cameraRequest) {
@@ -1097,6 +1342,9 @@ async function toggleCamera() {
 }
 
 function releaseCamera() {
+  if (state.stream && state.device?.mode === 'SO101' && ['IDLE', 'MOVING'].includes(state.device.state) && !state.stopped) {
+    stopAll();
+  }
   state.cameraRequest++;
   state.cameraPending = false;
   $('camera-button').disabled = false;
@@ -1114,10 +1362,15 @@ function releaseCamera() {
   state.selectedPerson = null;
   showVisionReading(null);
   setPreviewSize(1200, 800);
-  $('source-label').textContent = '◉ 模拟场景 · 非实时摄像头';
-  $('camera-button').textContent = '开启电脑摄像头';
-  setText($('shoot-source-copy'), '当前使用演示画面。');
+  showIdleCameraSource();
   drawDemo();
+}
+
+function showIdleCameraSource() {
+  const wristCamera = state.wristCamera;
+  setText($('source-label'), wristCamera ? '◉ 等待腕部摄像头' : '◉ 模拟场景 · 非实时摄像头');
+  setText($('camera-button'), wristCamera ? '开启腕部摄像头' : '开启电脑摄像头');
+  setText($('shoot-source-copy'), wristCamera ? `拍摄使用腕部摄像头「${wristCamera}」。` : '当前使用演示画面。');
 }
 
 // A 成员：页面事件与照片管理；B 成员替换 commands.js 和指导/视觉数据源。
@@ -1135,17 +1388,16 @@ document.querySelectorAll('[data-person-cell]').forEach(button => button.addEven
 document.querySelectorAll('[data-ratio]').forEach(button => button.addEventListener('click', () => setRatio(button.dataset.ratio)));
 document.querySelectorAll('[data-direction]').forEach(button => button.addEventListener('click', () => move(button.dataset.direction)));
 document.querySelectorAll('[data-command]').forEach(button => button.addEventListener('click', () => { $('command-input').value = button.dataset.command; runCommand(button.dataset.command); }));
-$('grid-toggle').addEventListener('change', event => {
-  $('thirds-grid').hidden = !event.target.checked;
-  $('editor-grid').hidden = !$('grid-toggle').checked || $('photo-dialog').dataset.view !== 'edit';
-});
-$('frame-toggle').addEventListener('change', event => { $('live-crop').hidden = !event.target.checked; });
-$('delay').addEventListener('change', cancelCapture);
 $('capture-button').addEventListener('click', capture);
 $('clear-head-target').addEventListener('click', () => setSceneTarget(null));
-stopButtons.forEach(button => button.addEventListener('click', stopAll));
+stopButtons.forEach(button => button.addEventListener('click', handleStopButton));
 $('home-button').addEventListener('click', home);
 $('camera-button').addEventListener('click', toggleCamera);
+$('command-clear').addEventListener('click', () => {
+  const input = $('command-input');
+  input.value = '';
+  input.focus();
+});
 $('command-form').addEventListener('submit', event => { event.preventDefault(); runCommand($('command-input').value); });
 $('guide-done').addEventListener('click', completeGuide);
 $('help-button').addEventListener('click', () => $('help-dialog').showModal());
@@ -1165,21 +1417,21 @@ $('download-original').addEventListener('click', () => download(state.selected.o
 $('download-crop').addEventListener('click', () => download(renderCrop(state.selected.original, photoCrop()), 'crop'));
 $('retake').addEventListener('click', () => { $('photo-dialog').close(); location.hash = 'studio'; });
 document.addEventListener('keydown', event => {
-  if (event.key !== 'Escape' || state.page !== 'studio') return;
+  if (event.key !== 'Escape' || !['studio', 'settings'].includes(state.page)) return;
   event.preventDefault();
   if (event.repeat) return;
   $('help-dialog').close();
-  $('ai-dialog').close();
   stopAll();
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) return;
+  if (state.device?.mode === 'SO101' && ['IDLE', 'MOVING'].includes(state.device.state) && !state.stopped) stopAll();
   cancelCapture();
   const hadHandsFree = speech.handsFree;
   speech.stop(hadHandsFree ? '切到后台时已关闭语音。' : '');
   setVoiceEnabled(false);
 });
-window.addEventListener('pagehide', () => { speech.stop(); setVoiceEnabled(false); releaseCamera(); });
+window.addEventListener('pagehide', () => { ai.clearKey(); cloud.clearKey(); speech.stop(); setVoiceEnabled(false); releaseCamera(); });
 video.addEventListener('resize', fitCameraPreview);
 attachDrag($('live-crop'), () => state.crop, () => ({ width: preview.width, height: preview.height }), changeCrop);
 attachDrag($('editor-crop'), () => state.draft, () => ({ width: state.selected.original.width, height: state.selected.original.height }), syncEditor, rememberCrop);
@@ -1187,10 +1439,35 @@ demoImage.onload = drawDemo;
 demoImage.onerror = () => notify('模拟场景加载失败，请检查静态资源。', true);
 demoImage.src = '/assets/demo-scene.svg';
 syncCrop();
+$('calibration-start').addEventListener('click', () => runCalibrationAction(calibrationApi.start));
+$('calibration-verify').addEventListener('click', () => runCalibrationAction(calibrationApi.verify));
+$('so101-arm').addEventListener('click', armAtNeutral);
+$('so101-release').addEventListener('click', releaseRealTorque);
+$('so101-cancel').addEventListener('click', () => {
+  state.neutralRevision = null;
+  showCalibration(state.calibration);
+  stopAll(true);
+});
+$('neutral-position-confirm').addEventListener('click', () => runCalibrationAction(async () => {
+  const status = await calibrationApi.status();
+  if (status.phase === 'VERIFIED' && status.revision) state.neutralRevision = status.revision;
+  return status;
+}));
+$('calibration-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('calibration-command').textContent);
+    notify('已复制校准命令。');
+  } catch {
+    notify('请手动选中并复制校准命令。');
+  }
+});
 setupVoice();
+applyPreferences(settings.preferences);
+cloud.refresh();
 window.addEventListener('hashchange', () => showPage());
 showPage(false);
 updateAvailability();
 log('欢迎来到灵眸。当前显示模拟场景，打开电脑摄像头后可体验人物分析。');
 pollStatus();
+refreshCalibration().catch(error => notify(error.message, true));
 setInterval(pollStatus, 4000);

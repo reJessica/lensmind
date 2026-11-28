@@ -206,6 +206,7 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 #photo-count { display: inline-block; min-width: 17px; margin-left: 4px; padding: 0 4px; border-radius: 5px; background: #edf0e7; font-size: 10px; text-align: center; }
 .site-actions { justify-self: end; }
 #help-button { padding: 7px 11px; background: transparent; font-size: 12px; }
+#so101-cancel { padding: 7px 9px; font-size: 12px; }
 .site-actions .stop-button { min-width: 61px; white-space: nowrap; }
 .stop-button { white-space: nowrap; }
 .stop-button:is([data-stop="stopping"], [data-stop="resetting"]) { color: #735119; border-color: #e7d5a9; background: #fff3d8; cursor: progress; }
@@ -287,6 +288,14 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 .assistant-privacy { margin-top: 9px; }
 #studio .settings-content { display: block; }
 .shutter-controls { padding: 14px 0 9px; border-bottom: 1px solid #eef1ea; }
+.calibration-task { grid-column: 1 / -1; min-width: 0; font-size: 13px; line-height: 1.55; }
+.calibration-task h3 { font-size: 14px; }
+.calibration-task p { margin: 0 0 8px; }
+#neutral-position { margin: 10px 0 0; padding: 10px; border-radius: 6px; background: #f4f6ef; }
+.calibration-task ol { padding-left: 20px; }
+.calibration-task li + li { margin-top: 6px; }
+.calibration-task pre { margin: 8px 0; padding: 8px; border-radius: 6px; background: #f4f6ef; white-space: pre-wrap; overflow-wrap: anywhere; }
+.calibration-task button { padding: 6px 9px; border-radius: 6px; }
 .shutter-controls .capture-settings { margin: 0 0 10px; padding: 0; }
 .shutter-controls .capture-button { justify-content: center; gap: 9px; text-align: center; }
 .shot-count { margin: 8px 0 2px; color: #506356; font-size: 12px; text-align: center; }
@@ -346,26 +355,13 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 .ai-actions, .ai-reference { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ai-note { color: #506351; font-size: 12px; line-height: 1.6; }
 .ai-note:empty { display: none; }
-.ai-dialog form { display: grid; gap: 7px; }
-.ai-panel label, .ai-dialog label { display: block; font-weight: 600; font-size: 12px; }
-.ai-dialog input {
-  width: 100%;
-  border: 1px solid #cfdccc;
-  border-radius: 7px;
-  background: #fff;
-  color: var(--ink);
-  padding: 9px 11px;
-  font: inherit;
-}
+.ai-panel label { display: block; font-weight: 600; font-size: 12px; }
 .ai-reference { margin-top: 4px; }
 .ai-reference > div { min-width: 0; }
 .ai-reference img { width: 65px; height: 56px; object-fit: cover; border-radius: 5px; }
 .ai-reference input { max-width: 100%; margin-top: 5px; font-size: 12px; }
 .ai-panel .primary-button { margin-top: 10px; }
-#ai-status, .ai-dialog > p:last-child { margin-top: 10px; }
-.ai-dialog { width: min(465px, calc(100vw - 26px)); }
-.ai-dialog form { margin-top: 13px; }
-.ai-dialog .ai-actions { margin-top: 7px; }
+#ai-status { margin-top: 10px; }
 .ai-result { border-top: 1px solid #dce5d7; margin-top: 10px; padding-top: 10px; line-height: 1.6; }
 .ai-result :is(ul, ol) { padding-left: 22px; margin: 8px 0 0; }
 .ai-result :is(ul, ol):empty { display: none; }
@@ -387,4 +383,19 @@ dialog{border:1px solid var(--line);border-radius:16px;padding:23px;color:var(--
 #so101-arm-image { display: block; width: 100%; height: auto; margin-top: 8px; border-radius: 8px; }
 @media (max-width: 520px) {
   #device-tools[data-so101] .movement-note { display: block; }
+}
+
+.command-clear {
+  flex: 0 0 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #657656;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.command-clear:hover {
+  background: #edf2e5;
 }

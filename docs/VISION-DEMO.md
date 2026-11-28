@@ -2,18 +2,13 @@
 
 ## 启动
 
-项目使用 Java 17 或以上版本。在 Windows 上，从仓库根目录的 PowerShell 运行下列命令准备人物和头部定位模型，再启动项目。
+项目使用 Java 17 或以上版本。三个 ONNX 模型随仓库检出，位于 `models/`。从仓库根目录启动应用。
 
 ```powershell
-.\scripts\setup-vision.ps1
 .\mvnw.cmd spring-boot:run
 ```
 
-其他系统可把 [固定版本的官方 SSD-MobileNetV1 模型](https://media.githubusercontent.com/media/onnx/models/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/object_detection_segmentation/ssd-mobilenetv1/model/ssd_mobilenet_v1_12.onnx) 放到 `models/ssd_mobilenet_v1_12.onnx`，再运行 `./mvnw spring-boot:run`。模型 SHA-256 为 `b8fba5e404077d4048d27fcd1667e85e27e192eb9bf51e696c46a3acd7d21058`。可以通过 `LENSMIND_VISION_MODEL` 指定该模型的绝对路径。模型来自 [ONNX Model Zoo](https://github.com/onnx/models/tree/main/validated/vision/object_detection_segmentation/ssd-mobilenetv1)，文件位于 Git 忽略目录。
-
-头部定位使用 [OpenCV Zoo 的 YuNet](https://github.com/opencv/opencv_zoo/tree/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet)，也可把 [固定版本的模型文件](https://media.githubusercontent.com/media/opencv/opencv_zoo/26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/face_detection_yunet_2026may.onnx) 放到 `models/face_detection_yunet_2026may.onnx`。SHA-256 为 `ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0`，可用 `LENSMIND_FACE_MODEL` 指定模型路径。
-
-半身和全身检查还使用 [OpenCV Zoo 姿态模型](https://github.com/opencv/opencv_zoo/tree/main/models/pose_estimation_mediapipe)。Windows 脚本会校验并安装。其他系统可下载 [固定模型文件](https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models/pose_estimation_mediapipe/pose_estimation_mediapipe_2023mar.onnx) 放入 `models/`，或通过 `LENSMIND_POSE_MODEL` 指定绝对路径。SHA-256 为 `9d89c599319a18fb7d2e28451a883476164543182bafca5f09eb2cf767ed2f3f`。
+macOS 或 Linux 使用 `./mvnw spring-boot:run`。模型来源、许可和校验方式见 [本地视觉模型](../models/README.md)。Windows 下可用 `.\scripts\setup-vision.ps1` 校验或补齐模型。自定义路径分别使用 `LENSMIND_VISION_MODEL`、`LENSMIND_FACE_MODEL` 和 `LENSMIND_POSE_MODEL`。
 
 打开 <http://127.0.0.1:8080/>，点「开始拍摄」。测试摄像头和麦克风时分别点击开启并批准权限。麦克风一次开启持续监听和播报。点「完成拍摄」关闭取景并进入选片页。
 
